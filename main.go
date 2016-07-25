@@ -32,23 +32,25 @@ func main() {
 	partitions := flag.Int("shards", 1, "the number of partitions we want (AT LEAST the number of cluster shards)")
 	fileName := flag.String("file", "", "Input file to ingest data from (wikipedia abstracts)")
 	engine := flag.String("engine", "redis", "The search backend to run")
-	//benchmark := flag.Bool("benchmark", false, "if set, we run a benchmark")
-	//conc := flag.Int("c", 4, "benchmark concurrency")
-	//qs := flag.String("queries", "hello world", "comma separated list of queries to benchmark")
+	benchmark := flag.Bool("benchmark", false, "if set, we run a benchmark")
+	conc := flag.Int("c", 4, "benchmark concurrency")
+	qs := flag.String("queries", "hello world", "comma separated list of queries to benchmark")
 
 	flag.Parse()
 	servers := strings.Split(*hosts, ",")
 	if len(servers) == 0 {
 		panic("No servers given")
 	}
-	//	queries := strings.Split(*qs, ",")
+	queries := strings.Split(*qs, ",")
 
 	runtime.GOMAXPROCS(runtime.NumCPU() / 2)
 
 	// select index to run
 	idx := selectIndex(*engine, servers, *partitions)
 
-	if *fileName != "" {
+	if *benchmark {
+		Benchmark(queries, *conc, idx)
+	} else if *fileName != "" {
 		idx.Drop()
 		idx.Create()
 		if err := ingest.IngestDocuments(*fileName, ingest.ReadWikipediaExtracts, idx, nil, 10000); err != nil {
