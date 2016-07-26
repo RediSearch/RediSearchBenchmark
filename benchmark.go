@@ -10,8 +10,8 @@ import (
 )
 
 func Benchmark(queries []string, concurrency int, idx index.Index) {
-	//	queries := []string{"weezer", "germany", "a", "music", "music of the spheres", "abba", "queen",
-	//		"nirvana", "benjamin netanyahu", "redis", "redis labs", "united nations", "german history", "computer science", "machine learning"}
+	//	queries = []string{"weezer", "germany", "a", "music", "music of the spheres", "abba", "queen",
+	//		"nirvana", "benjamin netanyahu", "redis", "redis labs", "german history"} // "computer science", "machine learning"}
 	//queries := []string{"earth Though is", "school etc"}
 	num := 0
 	startTime := time.Now()
@@ -27,7 +27,7 @@ func Benchmark(queries []string, concurrency int, idx index.Index) {
 				num++
 				total++
 				tst := time.Now()
-				q := query.NewQuery(IndexName, queries[total%len(queries)])
+				q := query.NewQuery(IndexName, queries[total%len(queries)]).Limit(0, 1)
 				_, _, err := idx.Search(*q)
 				if err != nil {
 					panic(err)

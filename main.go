@@ -2,12 +2,13 @@ package main
 
 import (
 	"flag"
-	"runtime"
 	"strings"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
+	"github.com/RedisLabs/RediSearchBenchmark/index/elastic"
 	"github.com/RedisLabs/RediSearchBenchmark/index/redisearch"
 	"github.com/RedisLabs/RediSearchBenchmark/ingest"
+	"github.com/RedisLabs/RediSearchBenchmark/query"
 )
 
 const IndexName = "wik"
@@ -16,12 +17,14 @@ var indexMetadata = index.NewMetadata().
 	AddField(index.NewTextField("title", 10)).
 	AddField(index.NewTextField("body", 1))
 
-func selectIndex(engine string, hosts []string, partitions int) index.Index {
+func selectIndex(engine string, hosts []string, partitions int) (index.Index, interface{}) {
 
 	switch engine {
 	case "redis":
-		return redisearch.NewDistributedIndex(IndexName, hosts, partitions, indexMetadata)
-
+		//return redisearch.NewIndex(hosts[0], "wik{0}", indexMetadata)
+		return redisearch.NewDistributedIndex(IndexName, hosts, partitions, indexMetadata), query.QueryVerbatim
+	case "elastic":
+		return elastic.NewIndex(hosts[0], IndexName, indexMetadata)
 	}
 	panic("could not find index type " + engine)
 }
@@ -42,8 +45,6 @@ func main() {
 		panic("No servers given")
 	}
 	queries := strings.Split(*qs, ",")
-
-	runtime.GOMAXPROCS(runtime.NumCPU() / 2)
 
 	// select index to run
 	idx := selectIndex(*engine, servers, *partitions)

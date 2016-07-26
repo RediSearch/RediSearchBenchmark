@@ -27,7 +27,7 @@ func NewDistributedIndex(name string, hosts []string, partitions int, md *index.
 		subs = append(subs, NewIndex(addr, fmt.Sprintf("%s{%d}", name, i), md))
 	}
 
-	wq := NewWorkQueue(partitions * 10)
+	wq := NewWorkQueue(partitions * 50)
 
 	return &DistributedIndex{
 		part:       part,

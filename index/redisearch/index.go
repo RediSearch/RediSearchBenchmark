@@ -27,7 +27,7 @@ const (
 	IndexTimeout = time.Second
 )
 
-var MaxConns = 100
+var MaxConns = 500
 
 func NewIndex(addr, name string, md *index.Metadata) *Index {
 
@@ -39,7 +39,7 @@ func NewIndex(addr, name string, md *index.Metadata) *Index {
 		name: name,
 	}
 	ret.pool.TestOnBorrow = nil
-	ret.pool.MaxActive = ret.pool.MaxIdle
+	//ret.pool.MaxActive = ret.pool.MaxIdle
 
 	return ret
 
@@ -159,9 +159,9 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 	defer conn.Close()
 
 	args := redis.Args{i.name, q.Term, "LIMIT", q.Paging.Offset, q.Paging.Num}
-	if q.Flags&query.QueryVerbatim != 0 {
-		args = append(args, "VERBATIM")
-	}
+	//if q.Flags&query.QueryVerbatim != 0 {
+	args = append(args, "VERBATIM")
+	//}
 	if q.Flags&query.QueryNoContent != 0 {
 		args = append(args, "NOCONTENT")
 	}

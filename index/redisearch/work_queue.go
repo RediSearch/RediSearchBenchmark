@@ -33,7 +33,7 @@ func NewWorkQueue(numWorkers int) workQueue {
 func (wq workQueue) NewTaskGroup() *taskGroup {
 	return &taskGroup{
 		wq:  wq,
-		rc:  make(resultChan),
+		rc:  make(resultChan, 8),
 		num: 0,
 	}
 }
@@ -50,22 +50,22 @@ func (t *taskGroup) Submit(f func(interface{}) interface{}, v interface{}) {
 }
 func (t *taskGroup) Wait(timeout time.Duration) ([]interface{}, error) {
 	returns := 0
-	end := time.Now().Add(timeout)
+	//end := time.Now().Add(timeout)
 	ret := make([]interface{}, 0, t.num)
 	var err error
 
-	for returns < t.num && time.Now().Before(end) {
+	for returns < t.num { // && time.Now().Before(end) {
 
 		var res interface{}
 		select {
 		case res = <-t.rc:
 			ret = append(ret, res)
 			returns++
-		case <-time.After(end.Sub(time.Now())):
-			goto endit
+			//		case <-time.After(end.Sub(time.Now())):
+			//			goto endit
 		}
 
 	}
-endit:
+
 	return ret, err
 }
