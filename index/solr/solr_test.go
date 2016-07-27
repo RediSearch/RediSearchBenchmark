@@ -1,8 +1,7 @@
-package elastic
+package solr
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
@@ -15,7 +14,7 @@ func TestIndex(t *testing.T) {
 	md := index.NewMetadata().AddField(index.NewTextField("title", 1.0)).
 		AddField(index.NewNumericField("score"))
 
-	idx, err := NewIndex("http://localhost:9200", "testung", md)
+	idx, err := NewIndex("http://localhost:8983/solr", "testung", md)
 	assert.NoError(t, err)
 
 	docs := []index.Document{}
@@ -25,18 +24,18 @@ func TestIndex(t *testing.T) {
 		//index.NewDocument("doc2", 1.0).Set("title", "foo bar hello").Set("score", 2),
 	}
 
-	//	assert.NoError(t, idx.Drop())
+	assert.NoError(t, idx.Drop())
+
 	//	assert.NoError(t, idx.Create())
 
-	//	assert.NoError(t, idx.Index(docs, nil))
+	assert.NoError(t, idx.Index(docs, nil))
 
-	q := query.NewQuery("doc", "hello world")
+	q := query.NewQuery("testung", "hello world")
 	docs, total, err := idx.Search(*q)
-
 	assert.NoError(t, err)
 	assert.True(t, total == 100)
-	assert.Len(t, docs, 10)
-	assert.True(t, strings.HasPrefix(docs[0].Id, "doc"))
+	assert.Len(t, docs, int(q.Paging.Num))
+	assert.Equal(t, docs[0].Id, "doc0")
 	assert.Equal(t, docs[0].Properties["title"], "hello world")
 
 }

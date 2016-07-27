@@ -1,10 +1,13 @@
 package ingest
 
 import (
+	"encoding/csv"
 	"encoding/xml"
 	"fmt"
 	"io"
+	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
@@ -20,7 +23,70 @@ func filter(title, body string) bool {
 
 	return true
 }
-func ReadWikipediaExtracts(r io.Reader) (<-chan index.Document, error) {
+
+type WikipediaAbstractsReader struct {
+	scores   map[string]float64
+	topScore float64
+}
+
+func (wr *WikipediaAbstractsReader) score(title string) float32 {
+	sc := wr.scores[title]
+
+	if wr.topScore == 0 {
+		wr.topScore = 1
+	}
+
+	return float32(sc / wr.topScore)
+
+}
+
+func NewWikipediaAbstractsReader() *WikipediaAbstractsReader {
+	return &WikipediaAbstractsReader{
+		scores: map[string]float64{},
+	}
+}
+
+func (r *WikipediaAbstractsReader) LoadScores(fileName string) error {
+
+	fp, err := os.Open(fileName)
+	if err != nil {
+		return err
+	}
+
+	defer fp.Close()
+
+	csvr := csv.NewReader(fp)
+	csvr.Comma = '\t'
+	csvr.LazyQuotes = true
+	line, err := csvr.Read()
+	num := 0
+	for err != io.EOF {
+		if len(line) == 2 {
+
+			f, err := strconv.ParseFloat(line[1], 32)
+			if err == nil {
+
+				r.scores[line[0]] = f
+				if f > r.topScore {
+					r.topScore = f
+				}
+				num++
+			}
+
+		}
+		line, err = csvr.Read()
+
+		if num%500000 == 0 {
+			fmt.Println("Loaded", num, "scores")
+		}
+	}
+	if err != io.EOF {
+		return err
+	}
+	return nil
+}
+
+func (wr *WikipediaAbstractsReader) Read(r io.Reader) (<-chan index.Document, error) {
 
 	dec := xml.NewDecoder(r)
 	ch := make(chan index.Document)
@@ -51,7 +117,7 @@ func ReadWikipediaExtracts(r io.Reader) (<-chan index.Document, error) {
 						body := strings.TrimSpace(props["abstract"])
 						//fmt.Println(title)
 						if filter(title, body) {
-							doc := index.NewDocument(id, 1.0).
+							doc := index.NewDocument(id, wr.score(id)).
 								Set("title", title).
 								Set("body", body).
 								Set("url", strings.TrimSpace(props["url"]))

@@ -9,7 +9,27 @@ import (
 	"github.com/RedisLabs/RediSearchBenchmark/query"
 )
 
-func Benchmark(queries []string, concurrency int, idx index.Index) {
+func SearchBenchmark(queries []string, idx index.Index, opts interface{}) func() error {
+
+	counter := 0
+	return func() error {
+		q := query.NewQuery(IndexName, queries[counter%len(queries)]).Limit(0, 1)
+		_, _, err := idx.Search(*q)
+		counter++
+		return err
+	}
+
+}
+
+func AutocompleteBenchmark(prefixes []string, ac index.Autocompleter) func() error {
+	counter := 0
+	return func() error {
+		_, err := ac.Suggest(prefixes[counter%len(prefixes)], 5, false)
+		counter++
+		return err
+	}
+}
+func Benchmark(concurrency int, f func() error) {
 	//	queries = []string{"weezer", "germany", "a", "music", "music of the spheres", "abba", "queen",
 	//		"nirvana", "benjamin netanyahu", "redis", "redis labs", "german history"} // "computer science", "machine learning"}
 	//queries := []string{"earth Though is", "school etc"}
@@ -20,6 +40,7 @@ func Benchmark(queries []string, concurrency int, idx index.Index) {
 	lck := sync.Mutex{}
 
 	total := 0
+	var err error
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func() {
@@ -27,9 +48,8 @@ func Benchmark(queries []string, concurrency int, idx index.Index) {
 				num++
 				total++
 				tst := time.Now()
-				q := query.NewQuery(IndexName, queries[total%len(queries)]).Limit(0, 1)
-				_, _, err := idx.Search(*q)
-				if err != nil {
+
+				if err = f(); err != nil {
 					panic(err)
 				}
 

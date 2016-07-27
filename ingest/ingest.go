@@ -4,16 +4,19 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 )
 
 // DocumentReader implements parsing a data source and yielding documents
-type DocumentReader func(io.Reader) (<-chan index.Document, error)
+type DocumentReader interface {
+	Read(io.Reader) (<-chan index.Document, error)
+}
 
 // IngestDocuments ingests documents into an index using a DocumentReader
-func IngestDocuments(fileName string, r DocumentReader, idx index.Index, opts interface{}, chunk int) error {
+func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac index.Autocompleter, opts interface{}, chunk int) error {
 
 	// open the file
 	fp, err := os.Open(fileName)
@@ -23,20 +26,42 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, opts in
 	defer fp.Close()
 
 	// run the reader and let it spawn a goroutine
-	ch, err := r(fp)
+	ch, err := r.Read(fp)
 	if err != nil {
 		return err
 	}
 
 	docs := make([]index.Document, chunk)
+	terms := make([]index.AutocompleteTerm, chunk)
 	st := time.Now()
 
+	nterms := 0
 	i := 0
 	n := 0
 	dt := 0
 	for doc := range ch {
 
 		docs[i%chunk] = doc
+
+		if doc.Score > 0 && ac != nil {
+
+			terms[nterms] = index.AutocompleteTerm{
+				strings.ToLower(doc.Properties["title"].(string)),
+				float64(doc.Score),
+			}
+			nterms++
+
+			if nterms == chunk {
+				if err := ac.AddTerms(terms...); err != nil {
+					return err
+				}
+				nterms = 0
+			}
+
+		}
+		if doc.Score == 0 {
+			doc.Score = 0.0000001
+		}
 
 		for k, v := range doc.Properties {
 			switch s := v.(type) {

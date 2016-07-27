@@ -1,35 +1,38 @@
 package elastic
 
 import (
+	"encoding/json"
+
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 	"github.com/RedisLabs/RediSearchBenchmark/query"
-	elastigo "github.com/mattbaird/elastigo/lib"
+	"gopkg.in/olivere/elastic.v3"
 )
 
 type Index struct {
-	conn *elastigo.Conn
-	bi   *elastigo.BulkIndexer
+	conn *elastic.Client
+
 	md   *index.Metadata
 	name string
 }
 
-func NewIndex(addr, name string, md *index.Metadata) *Index {
-
+func NewIndex(addr, name string, md *index.Metadata) (*Index, error) {
+	conn, err := elastic.NewClient(elastic.SetURL(addr))
+	if err != nil {
+		return nil, err
+	}
 	ret := &Index{
-		conn: elastigo.NewConn(),
+		conn: conn,
 		md:   md,
 		name: name,
 	}
 
-	ret.conn.SetFromUrl(addr)
-
-	return ret
+	return ret, nil
 
 }
 
 func (i *Index) Create() error {
 
-	_, err := i.conn.CreateIndex(i.name)
+	_, err := i.conn.CreateIndex(i.name).Do()
 
 	return err
 }
@@ -38,44 +41,52 @@ func (i *Index) Create() error {
 // TODO: Add support for multiple insertions
 func (i *Index) Index(docs []index.Document, opts interface{}) error {
 
-	if i.bi == nil {
-		i.bi = i.conn.NewBulkIndexer(4)
-		i.bi.Start()
-	}
+	blk := i.conn.Bulk()
 
 	for _, doc := range docs {
+		req := elastic.NewBulkIndexRequest().Index(i.name).Type("doc").Id(doc.Id).Doc(doc.Properties)
+		blk.Add(req)
 
-		if err := i.bi.Index(i.name, "doc", doc.Id, "", "", nil, doc.Properties); err != nil {
-			return err
-		}
 	}
-	i.bi.Flush()
+	_, err := blk.Do()
 
-	return nil
+	return err
 }
 
 func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 
-	resp, err := i.conn.SearchUri(i.name, "doc",
-		map[string]interface{}{"q": q.Term}) //, "from": q.Paging.Offset, "size": q.Paging.Num})
+	eq := elastic.NewQueryStringQuery(q.Term)
+	res, err := i.conn.Search(i.name).Type("doc").
+		Query(eq).
+		From(q.Paging.Offset).
+		Size(q.Paging.Num).
+		Do()
+
 	if err != nil {
 		return nil, 0, err
 	}
-	_ = resp
 
-	//	for _, h := range resp.Hits.Hits {
-	//		fmt.Println(h.Fields)
-	//	}
+	ret := make([]index.Document, 0, q.Paging.Num)
+	for _, h := range res.Hits.Hits {
 
-	//fmt.Println(out.Hits.Total)
-	return nil, 0, err
-	//out, err := i.conn..Search("testindex", "user", nil, searchJson)
+		if h != nil {
+			d := index.NewDocument(h.Id, float32(*h.Score))
+			if err := json.Unmarshal(*h.Source, &d.Properties); err == nil {
+				ret = append(ret, d)
+			}
+		}
+
+	}
+
+	return ret, int(res.TotalHits()), err
 }
 
 func (i *Index) Drop() error {
-	_, err := i.conn.DeleteIndex(i.name)
-	if err != nil && err.Error() != "record not found" {
-		return err
-	}
+	i.conn.DeleteIndex(i.name).Do()
+	//	elastic.
+	//	if err != nil && !elastic.IsNotFound(err) {
+	//		return err
+	//	}
+
 	return nil
 }

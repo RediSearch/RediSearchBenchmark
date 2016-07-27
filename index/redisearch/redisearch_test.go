@@ -46,7 +46,7 @@ func TestIndex(t *testing.T) {
 
 func TestDistributedIndex(t *testing.T) {
 	// todo: run redisearch automatically
-
+	t.SkipNow()
 	md := index.NewMetadata().AddField(index.NewTextField("title", 1.0)).
 		AddField(index.NewNumericField("score"))
 
@@ -79,4 +79,25 @@ func TestDistributedIndex(t *testing.T) {
 	assert.Equal(t, docs[0].Id, "doc2")
 	assert.Equal(t, docs[1].Id, "doc1")
 
+}
+
+func TestAutocompleter(t *testing.T) {
+
+	ac, err := NewAutocompleter("localhost:6379", "ac")
+
+	assert.NoError(t, err)
+
+	assert.NoError(t, ac.AddTerms(
+		index.AutocompleteTerm{"hello world", 1},
+		index.AutocompleteTerm{"hello", 2},
+		index.AutocompleteTerm{"jello world", 3},
+	))
+
+	suggs, err := ac.Suggest("hel", 10, false)
+	assert.NoError(t, err)
+	assert.Len(t, suggs, 2)
+
+	suggs, err = ac.Suggest("hel", 10, true)
+	assert.NoError(t, err)
+	assert.Len(t, suggs, 3)
 }

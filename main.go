@@ -7,6 +7,7 @@ import (
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 	"github.com/RedisLabs/RediSearchBenchmark/index/elastic"
 	"github.com/RedisLabs/RediSearchBenchmark/index/redisearch"
+	"github.com/RedisLabs/RediSearchBenchmark/index/solr"
 	"github.com/RedisLabs/RediSearchBenchmark/ingest"
 	"github.com/RedisLabs/RediSearchBenchmark/query"
 )
@@ -24,7 +25,18 @@ func selectIndex(engine string, hosts []string, partitions int) (index.Index, in
 		//return redisearch.NewIndex(hosts[0], "wik{0}", indexMetadata)
 		return redisearch.NewDistributedIndex(IndexName, hosts, partitions, indexMetadata), query.QueryVerbatim
 	case "elastic":
-		return elastic.NewIndex(hosts[0], IndexName, indexMetadata)
+		idx, err := elastic.NewIndex(hosts[0], IndexName, indexMetadata)
+		if err != nil {
+			panic(err)
+		}
+		return idx, 0
+	case "solr":
+		idx, err := solr.NewIndex(hosts[0], IndexName, indexMetadata)
+		if err != nil {
+			panic(err)
+		}
+		return idx, 0
+
 	}
 	panic("could not find index type " + engine)
 }
@@ -34,8 +46,10 @@ func main() {
 	hosts := flag.String("hosts", "localhost:6379", "comma separated list of host:port to redis nodes")
 	partitions := flag.Int("shards", 1, "the number of partitions we want (AT LEAST the number of cluster shards)")
 	fileName := flag.String("file", "", "Input file to ingest data from (wikipedia abstracts)")
+	scoreFile := flag.String("scores", "", "read scores of documents CSV for indexing")
 	engine := flag.String("engine", "redis", "The search backend to run")
-	benchmark := flag.Bool("benchmark", false, "if set, we run a benchmark")
+	benchmark := flag.String("benchmark", "", "[search|suggest] - if set, we run the given benchmark")
+
 	conc := flag.Int("c", 4, "benchmark concurrency")
 	qs := flag.String("queries", "hello world", "comma separated list of queries to benchmark")
 
@@ -47,14 +61,26 @@ func main() {
 	queries := strings.Split(*qs, ",")
 
 	// select index to run
-	idx := selectIndex(*engine, servers, *partitions)
+	idx, opts := selectIndex(*engine, servers, *partitions)
+	ac := redisearch.NewAutocompleter(servers[0], "ac")
 
-	if *benchmark {
-		Benchmark(queries, *conc, idx)
+	if *benchmark == "search" {
+		Benchmark(*conc, SearchBenchmark(queries, idx, opts))
+	} else if *benchmark == "suggest" {
+		Benchmark(*conc, AutocompleteBenchmark(queries, ac))
 	} else if *fileName != "" {
+		ac.Delete()
 		idx.Drop()
 		idx.Create()
-		if err := ingest.IngestDocuments(*fileName, ingest.ReadWikipediaExtracts, idx, nil, 10000); err != nil {
+		wr := ingest.NewWikipediaAbstractsReader()
+
+		if *scoreFile != "" {
+			if err := wr.LoadScores(*scoreFile); err != nil {
+				panic(err)
+			}
+		}
+
+		if err := ingest.IngestDocuments(*fileName, wr, idx, ac, nil, 10000); err != nil {
 			panic(err)
 		}
 	}

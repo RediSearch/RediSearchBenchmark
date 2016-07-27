@@ -20,8 +20,8 @@ type Query struct {
 }
 
 type Paging struct {
-	Offset uint
-	Num    uint
+	Offset int
+	Num    int
 }
 
 func NewQuery(index, term string) *Query {
@@ -38,7 +38,7 @@ func (q *Query) AddPredicate(p Predicate) *Query {
 	return q
 }
 
-func (q *Query) Limit(offset, num uint) *Query {
+func (q *Query) Limit(offset, num int) *Query {
 	q.Paging.Offset = offset
 	q.Paging.Num = num
 	return q
