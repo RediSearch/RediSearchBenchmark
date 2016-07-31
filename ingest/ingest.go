@@ -32,20 +32,21 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 	}
 
 	docs := make([]index.Document, chunk)
-	terms := make([]index.AutocompleteTerm, chunk)
+	terms := make([]index.Suggestion, chunk)
 	st := time.Now()
 
 	nterms := 0
 	i := 0
 	n := 0
 	dt := 0
+
 	for doc := range ch {
 
 		docs[i%chunk] = doc
 
 		if doc.Score > 0 && ac != nil {
 
-			terms[nterms] = index.AutocompleteTerm{
+			terms[nterms] = index.Suggestion{
 				strings.ToLower(doc.Properties["title"].(string)),
 				float64(doc.Score),
 			}

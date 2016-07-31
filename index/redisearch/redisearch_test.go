@@ -1,6 +1,7 @@
 package redisearch
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
@@ -46,7 +47,7 @@ func TestIndex(t *testing.T) {
 
 func TestDistributedIndex(t *testing.T) {
 	// todo: run redisearch automatically
-	t.SkipNow()
+	//t.SkipNow()
 	md := index.NewMetadata().AddField(index.NewTextField("title", 1.0)).
 		AddField(index.NewNumericField("score"))
 
@@ -79,18 +80,29 @@ func TestDistributedIndex(t *testing.T) {
 	assert.Equal(t, docs[0].Id, "doc2")
 	assert.Equal(t, docs[1].Id, "doc1")
 
+	suggs := []index.Suggestion{}
+	for i := 0; i < 100; i++ {
+		suggs = append(suggs, index.Suggestion{fmt.Sprintf("suggestion %d", i), float64(i)})
+	}
+
+	assert.NoError(t, idx.AddTerms(suggs...))
+
+	suggs, err = idx.Suggest("sugg", 10, false)
+	assert.NoError(t, err)
+	fmt.Println(suggs)
+	assert.Len(t, suggs, 10)
+
 }
 
 func TestAutocompleter(t *testing.T) {
 
-	ac, err := NewAutocompleter("localhost:6379", "ac")
+	ac := NewAutocompleter("localhost:6379", "ac")
 
-	assert.NoError(t, err)
-
+	assert.NotNil(t, ac)
 	assert.NoError(t, ac.AddTerms(
-		index.AutocompleteTerm{"hello world", 1},
-		index.AutocompleteTerm{"hello", 2},
-		index.AutocompleteTerm{"jello world", 3},
+		index.Suggestion{"hello world", 1},
+		index.Suggestion{"hello", 2},
+		index.Suggestion{"jello world", 3},
 	))
 
 	suggs, err := ac.Suggest("hel", 10, false)

@@ -1,6 +1,8 @@
 package redisearch
 
 import (
+	"strconv"
+
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 	"github.com/garyburd/redigo/redis"
 )
@@ -28,7 +30,7 @@ func (a *Autocompleter) Delete() error {
 	return err
 }
 
-func (a *Autocompleter) AddTerms(terms ...index.AutocompleteTerm) error {
+func (a *Autocompleter) AddTerms(terms ...index.Suggestion) error {
 
 	conn := a.pool.Get()
 	defer conn.Close()
@@ -51,14 +53,30 @@ func (a *Autocompleter) AddTerms(terms ...index.AutocompleteTerm) error {
 	}
 	return nil
 }
-func (a *Autocompleter) Suggest(prefix string, num int, fuzzy bool) ([]string, error) {
+func (a *Autocompleter) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion, error) {
 	conn := a.pool.Get()
 	defer conn.Close()
 
-	args := redis.Args{a.name, prefix, "MAX", num}
+	args := redis.Args{a.name, prefix, "MAX", num, "WITHSCORES"}
 	if fuzzy {
 		args = append(args, "FUZZY")
 	}
-	return redis.Strings(conn.Do("FT.SUGGET", args...))
+	vals, err := redis.Strings(conn.Do("FT.SUGGET", args...))
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]index.Suggestion, 0, len(vals)/2)
+	for i := 0; i < len(vals); i += 2 {
+
+		score, err := strconv.ParseFloat(vals[i+1], 64)
+		if err != nil {
+			continue
+		}
+		ret = append(ret, index.Suggestion{vals[i], score})
+
+	}
+
+	return ret, nil
 
 }

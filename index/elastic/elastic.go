@@ -32,7 +32,33 @@ func NewIndex(addr, name string, md *index.Metadata) (*Index, error) {
 
 func (i *Index) Create() error {
 
-	_, err := i.conn.CreateIndex(i.name).Do()
+	docMapping := `
+	{
+		"mappings": {
+			"doc":{
+				"properties":{
+					"body":{
+						"type":"string"
+					},
+					"title":{
+						"type":"string"
+					}
+					
+				}
+			},
+			"autocomplete":{
+				"properties":{
+					"sugg":{
+						"type":"completion",
+						"payloads":true
+					}
+				}
+			}
+		}
+	}
+	`
+
+	_, err := i.conn.CreateIndex(i.name).BodyJson(docMapping).Do()
 
 	return err
 }
@@ -48,7 +74,7 @@ func (i *Index) Index(docs []index.Document, opts interface{}) error {
 		blk.Add(req)
 
 	}
-	_, err := blk.Do()
+	_, err := blk.Refresh(true).Do()
 
 	return err
 }
@@ -89,4 +115,51 @@ func (i *Index) Drop() error {
 	//	}
 
 	return nil
+}
+
+func (i *Index) AddTerms(terms ...index.Suggestion) error {
+	blk := i.conn.Bulk()
+
+	for _, term := range terms {
+		req := elastic.NewBulkIndexRequest().Index(i.name).Type("autocomplete").
+			Doc(map[string]interface{}{"sugg": term.Term})
+
+		blk.Add(req)
+
+	}
+	_, err := blk.Refresh(true).Do()
+
+	return err
+
+}
+func (i *Index) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion, error) {
+
+	s := elastic.NewCompletionSuggester("autocomplete").Field("sugg").Text(prefix).Size(num)
+
+	res, err := i.conn.Suggest(i.name).Suggester(s).Do()
+	if err != nil {
+		return nil, err
+	}
+
+	if suggs, found := res["autocomplete"]; found {
+		if len(suggs) > 0 {
+			opts := suggs[0].Options
+
+			ret := make([]index.Suggestion, 0, len(opts))
+			for _, op := range opts {
+				ret = append(ret, index.Suggestion{op.Text, float64(op.Score)})
+			}
+			return ret, nil
+		}
+
+	}
+
+	//ret := make([]index.Suggestion, res.)
+	return nil, err
+
+}
+
+// Delete the suggestion index, currently just calls Drop()
+func (i *Index) Delete() error {
+	return i.Drop()
 }

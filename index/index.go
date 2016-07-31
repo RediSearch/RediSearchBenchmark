@@ -11,12 +11,12 @@ type Index interface {
 	Create() error
 }
 
-type AutocompleteTerm struct {
+type Suggestion struct {
 	Term  string
 	Score float64
 }
 type Autocompleter interface {
-	AddTerms(terms ...AutocompleteTerm) error
-	Suggest(prefix string, num int, fuzzy bool) ([]string, error)
+	AddTerms(terms ...Suggestion) error
+	Suggest(prefix string, num int, fuzzy bool) ([]Suggestion, error)
 	Delete() error
 }

@@ -18,24 +18,25 @@ var indexMetadata = index.NewMetadata().
 	AddField(index.NewTextField("title", 10)).
 	AddField(index.NewTextField("body", 1))
 
-func selectIndex(engine string, hosts []string, partitions int) (index.Index, interface{}) {
+func selectIndex(engine string, hosts []string, partitions int) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
 	case "redis":
 		//return redisearch.NewIndex(hosts[0], "wik{0}", indexMetadata)
-		return redisearch.NewDistributedIndex(IndexName, hosts, partitions, indexMetadata), query.QueryVerbatim
+		idx := redisearch.NewDistributedIndex(IndexName, hosts, partitions, indexMetadata)
+		return idx, idx, query.QueryVerbatim
 	case "elastic":
 		idx, err := elastic.NewIndex(hosts[0], IndexName, indexMetadata)
 		if err != nil {
 			panic(err)
 		}
-		return idx, 0
+		return idx, idx, 0
 	case "solr":
 		idx, err := solr.NewIndex(hosts[0], IndexName, indexMetadata)
 		if err != nil {
 			panic(err)
 		}
-		return idx, 0
+		return idx, nil, 0
 
 	}
 	panic("could not find index type " + engine)
@@ -61,8 +62,7 @@ func main() {
 	queries := strings.Split(*qs, ",")
 
 	// select index to run
-	idx, opts := selectIndex(*engine, servers, *partitions)
-	ac := redisearch.NewAutocompleter(servers[0], "ac")
+	idx, ac, opts := selectIndex(*engine, servers, *partitions)
 
 	if *benchmark == "search" {
 		Benchmark(*conc, SearchBenchmark(queries, idx, opts))

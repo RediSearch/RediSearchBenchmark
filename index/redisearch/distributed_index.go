@@ -12,6 +12,7 @@ import (
 
 type DistributedIndex struct {
 	partitions []index.Index
+	completers []index.Autocompleter
 	part       Partitioner
 	timeout    time.Duration
 	wq         workQueue
@@ -19,12 +20,15 @@ type DistributedIndex struct {
 
 func NewDistributedIndex(name string, hosts []string, partitions int, md *index.Metadata) *DistributedIndex {
 
-	part := ModuloPartitioner{len(hosts)}
+	part := ModuloPartitioner{partitions}
 
 	subs := make([]index.Index, 0, partitions)
+	completers := make([]index.Autocompleter, 0, partitions)
+
 	for i := 0; i < partitions; i++ {
 		addr := hosts[i%len(hosts)]
 		subs = append(subs, NewIndex(addr, fmt.Sprintf("%s{%d}", name, i), md))
+		completers = append(completers, NewAutocompleter(addr, fmt.Sprintf("%s.autocomplete{%d}", name, i)))
 	}
 
 	wq := NewWorkQueue(partitions * 50)
@@ -32,6 +36,7 @@ func NewDistributedIndex(name string, hosts []string, partitions int, md *index.
 	return &DistributedIndex{
 		part:       part,
 		partitions: subs,
+		completers: completers,
 		timeout:    100 * time.Millisecond,
 		wq:         wq,
 	}
@@ -139,7 +144,90 @@ type ModuloPartitioner struct {
 
 // PartitionFor returns a partition number of a given key
 func (m ModuloPartitioner) PartitionFor(id string) uint32 {
-
 	return crc32.ChecksumIEEE([]byte(id)) % uint32(m.n)
+}
+
+func (i *DistributedIndex) AddTerms(terms ...index.Suggestion) error {
+	splits := make([][]index.Suggestion, len(i.completers))
+	for _, t := range terms {
+		p := i.part.PartitionFor(t.Term)
+		splits[p] = append(splits[p], t)
+	}
+
+	var err error
+	var wg sync.WaitGroup
+	for x, split := range splits {
+		wg.Add(1)
+		go func(x int, split []index.Suggestion) {
+			if e := i.completers[x].AddTerms(split...); err != nil {
+				err = e
+			}
+			wg.Done()
+		}(x, split)
+	}
+	wg.Wait()
+	return err
+
+}
+func (i *DistributedIndex) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion, error) {
+
+	tg := i.wq.NewTaskGroup()
+
+	for n := 0; n < len(i.completers); n++ {
+		tg.Submit(
+			func(v interface{}) interface{} {
+				sub := v.(index.Autocompleter)
+				results, err := sub.Suggest(prefix, num, fuzzy)
+				if err != nil {
+					return err
+				}
+				return results
+			},
+			i.completers[n])
+	}
+
+	results, err := tg.Wait(i.timeout)
+	if err != nil {
+		return nil, err
+	}
+	return i.mergeSuggestions(results, num)
+
+}
+
+func (i *DistributedIndex) mergeSuggestions(rs []interface{}, num int) ([]index.Suggestion, error) {
+
+	ret := make([]index.Suggestion, 0, num)
+	var err error
+	for _, v := range rs {
+		switch x := v.(type) {
+		case error:
+			err = x
+		case []index.Suggestion:
+			ret = append(ret, x...)
+		default:
+			panic("Invalid type for AC suggestion!")
+		}
+	}
+
+	if len(ret) == 0 {
+		return nil, err
+	}
+
+	if num > len(ret) {
+		num = len(ret)
+	}
+
+	return ret[:num], nil
+}
+
+func (i *DistributedIndex) Delete() error {
+
+	for _, c := range i.completers {
+		if err := c.Delete(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 
 }
