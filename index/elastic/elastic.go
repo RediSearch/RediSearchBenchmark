@@ -2,6 +2,8 @@ package elastic
 
 import (
 	"encoding/json"
+	"net/http"
+	"time"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 	"github.com/RedisLabs/RediSearchBenchmark/query"
@@ -16,7 +18,14 @@ type Index struct {
 }
 
 func NewIndex(addr, name string, md *index.Metadata) (*Index, error) {
-	conn, err := elastic.NewClient(elastic.SetURL(addr))
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost: 500,
+		},
+		Timeout: 250 * time.Millisecond,
+	}
+	conn, err := elastic.NewClient(elastic.SetURL(addr), elastic.SetHttpClient(client))
 	if err != nil {
 		return nil, err
 	}
@@ -109,10 +118,6 @@ func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 
 func (i *Index) Drop() error {
 	i.conn.DeleteIndex(i.name).Do()
-	//	elastic.
-	//	if err != nil && !elastic.IsNotFound(err) {
-	//		return err
-	//	}
 
 	return nil
 }

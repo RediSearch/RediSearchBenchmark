@@ -194,6 +194,10 @@ func (i *DistributedIndex) Suggest(prefix string, num int, fuzzy bool) ([]index.
 
 }
 
+func (i *DistributedIndex) Close() {
+
+}
+
 func (i *DistributedIndex) mergeSuggestions(rs []interface{}, num int) ([]index.Suggestion, error) {
 
 	ret := make([]index.Suggestion, 0, num)

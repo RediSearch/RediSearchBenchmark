@@ -33,6 +33,8 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 
 	docs := make([]index.Document, chunk)
 	terms := make([]index.Suggestion, chunk)
+
+	//freqs := map[string]int{}
 	st := time.Now()
 
 	nterms := 0
@@ -46,6 +48,13 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 
 		if doc.Score > 0 && ac != nil {
 
+			//			words := strings.Fields(strings.ToLower(doc.Properties["body"].(string)))
+			//			for _, w := range words {
+			//				for i := 2; i < len(w) && i < 5; i++ {
+			//					freqs[w[:i]] += 1
+			//				}
+			//			}
+
 			terms[nterms] = index.Suggestion{
 				strings.ToLower(doc.Properties["title"].(string)),
 				float64(doc.Score),
@@ -53,6 +62,11 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 			nterms++
 
 			if nterms == chunk {
+
+				//				for k, v := range freqs {
+				//					fmt.Printf("%d %s\n", v, k)
+				//				}
+				//				os.Exit(0)
 				if err := ac.AddTerms(terms...); err != nil {
 					return err
 				}

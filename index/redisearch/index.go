@@ -154,6 +154,10 @@ func loadDocument(id, fields interface{}) (index.Document, error) {
 	return doc, nil
 }
 
+func (i *Index) Close() {
+	i.pool.Close()
+}
+
 func (i *Index) Search(q query.Query) (docs []index.Document, total int, err error) {
 	conn := i.pool.Get()
 	defer conn.Close()

@@ -2,7 +2,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 	"github.com/RedisLabs/RediSearchBenchmark/index/elastic"
@@ -36,7 +38,7 @@ func selectIndex(engine string, hosts []string, partitions int) (index.Index, in
 		if err != nil {
 			panic(err)
 		}
-		return idx, nil, 0
+		return idx, idx, 0
 
 	}
 	panic("could not find index type " + engine)
@@ -50,9 +52,12 @@ func main() {
 	scoreFile := flag.String("scores", "", "read scores of documents CSV for indexing")
 	engine := flag.String("engine", "redis", "The search backend to run")
 	benchmark := flag.String("benchmark", "", "[search|suggest] - if set, we run the given benchmark")
-
+	fuzzy := flag.Bool("fuzzy", false, "For redis only - benchmark fuzzy auto suggest")
+	seconds := flag.Int("duration", 5, "number of seconds to run the benchmark")
 	conc := flag.Int("c", 4, "benchmark concurrency")
 	qs := flag.String("queries", "hello world", "comma separated list of queries to benchmark")
+	outfile := flag.String("o", "benchmark.csv", "results output file. set to - for stdout")
+	duration := time.Second * time.Duration(*seconds)
 
 	flag.Parse()
 	servers := strings.Split(*hosts, ",")
@@ -65,11 +70,15 @@ func main() {
 	idx, ac, opts := selectIndex(*engine, servers, *partitions)
 
 	if *benchmark == "search" {
-		Benchmark(*conc, SearchBenchmark(queries, idx, opts))
+		name := fmt.Sprintf("search: %s", *qs)
+		Benchmark(*conc, duration, *engine, name, *outfile, SearchBenchmark(queries, idx, opts))
 	} else if *benchmark == "suggest" {
-		Benchmark(*conc, AutocompleteBenchmark(queries, ac))
-	} else if *fileName != "" {
-		ac.Delete()
+		Benchmark(*conc, duration, *engine, "suggest", *outfile, AutocompleteBenchmark(ac, *fuzzy))
+	} else if *fileName != "" && *benchmark == "" {
+		if ac != nil {
+			ac.Delete()
+		}
+
 		idx.Drop()
 		idx.Create()
 		wr := ingest.NewWikipediaAbstractsReader()
@@ -80,7 +89,7 @@ func main() {
 			}
 		}
 
-		if err := ingest.IngestDocuments(*fileName, wr, idx, ac, nil, 10000); err != nil {
+		if err := ingest.IngestDocuments(*fileName, wr, idx, ac, nil, 50000); err != nil {
 			panic(err)
 		}
 	}

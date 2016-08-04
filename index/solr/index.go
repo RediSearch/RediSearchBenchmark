@@ -1,8 +1,11 @@
 package solr
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/url"
 	"reflect"
+	"strings"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 	"github.com/RedisLabs/RediSearchBenchmark/query"
@@ -36,6 +39,9 @@ func (i *Index) Index(documents []index.Document, options interface{}) error {
 		sd := solr.Document(doc.Properties)
 		sd["id"] = doc.Id
 		sd["score"] = doc.Score
+		// hack to support suggestions on the same index
+		sd["suggest"] = strings.ToLower(doc.Properties["title"].(string))
+
 		soldocs = append(soldocs, sd)
 	}
 
@@ -90,4 +96,64 @@ func (i *Index) Create() error {
 	params.Set("name", i.name)
 	_, err = ca.Action("CREATE", &params)
 	return err
+}
+
+func (i *Index) Close() {
+
+}
+
+func (i *Index) AddTerms(terms ...index.Suggestion) error {
+	// not implemented since we do this automatically in the indexing itself
+	return nil
+}
+
+// SuggestResponse parses the suggest responses because the solr client doesn't include this feature
+type SuggestResponse struct {
+	ResponseHeader struct {
+		Status int `json:"status"`
+		QTime  int `json:"QTime"`
+	} `json:"responseHeader"`
+	Suggest struct {
+		Autocomplete map[string]struct {
+			NumFound    int `json:"numFound"`
+			Suggestions []struct {
+				Term    string  `json:"term"`
+				Weight  float64 `json:"weight"`
+				Payload string  `json:"payload"`
+			} `json:"suggestions"`
+		} `json:"autocomplete"`
+	} `json:"suggest"`
+}
+
+func (i *Index) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion, error) {
+	s := i.si.Search(solr.NewQuery())
+
+	parms := url.Values{}
+	parms.Set("suggest.q", prefix)
+	parms.Set("suggest.num", fmt.Sprintf("%d", num))
+	parms.Set("suggest", "true")
+	b, err := s.Resource("suggest", &parms)
+	if err != nil || b == nil {
+		return nil, err
+	}
+
+	var res SuggestResponse
+
+	if err := json.Unmarshal(*b, &res); err != nil {
+		return nil, err
+	}
+
+	for _, s := range res.Suggest.Autocomplete {
+		ret := make([]index.Suggestion, 0, num)
+		for _, sugg := range s.Suggestions {
+			ret = append(ret, index.Suggestion{sugg.Term, sugg.Weight})
+		}
+
+		return ret, nil
+	}
+	return nil, nil
+
+}
+func (i *Index) Delete() error {
+	return nil
 }
