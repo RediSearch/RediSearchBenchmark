@@ -3,6 +3,7 @@ package redisearch
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
@@ -74,7 +75,7 @@ func (i *Index) Create() error {
 
 	conn := i.pool.Get()
 	defer conn.Close()
-	fmt.Println(args)
+	//fmt.Println(args)
 	_, err := conn.Do("FT.CREATE", args...)
 	return err
 }
@@ -135,9 +136,14 @@ func (i *Index) Index(docs []index.Document, options interface{}) error {
 	return nil
 }
 
-func loadDocument(id, fields interface{}) (index.Document, error) {
+func loadDocument(id, sc, fields interface{}) (index.Document, error) {
 
-	doc := index.NewDocument(string(id.([]byte)), 1.0)
+	score, err := strconv.ParseFloat(string(sc.([]byte)), 64)
+	if err != nil {
+		return index.Document{}, fmt.Errorf("Could not parse score: %s", err)
+	}
+
+	doc := index.NewDocument(string(id.([]byte)), float32(score))
 	lst := fields.([]interface{})
 	for i := 0; i < len(lst); i += 2 {
 		prop := string(lst[i].([]byte))
@@ -162,7 +168,7 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 	conn := i.pool.Get()
 	defer conn.Close()
 
-	args := redis.Args{i.name, q.Term, "LIMIT", q.Paging.Offset, q.Paging.Num}
+	args := redis.Args{i.name, q.Term, "LIMIT", q.Paging.Offset, q.Paging.Num, "WITHSCORES"}
 	//if q.Flags&query.QueryVerbatim != 0 {
 	args = append(args, "VERBATIM")
 	//}
@@ -181,13 +187,13 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 
 	docs = make([]index.Document, 0, len(res)-1)
 
-	if len(res) > 2 {
-		for i := 1; i < len(res); i += 2 {
+	if len(res) > 3 {
+		for i := 1; i < len(res); i += 3 {
 
 			if i == 0 {
 				continue
 			}
-			if d, e := loadDocument(res[i], res[i+1]); e == nil {
+			if d, e := loadDocument(res[i], res[i+1], res[i+2]); e == nil {
 				docs = append(docs, d)
 			}
 		}

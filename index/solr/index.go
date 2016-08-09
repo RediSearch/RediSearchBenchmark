@@ -98,10 +98,6 @@ func (i *Index) Create() error {
 	return err
 }
 
-func (i *Index) Close() {
-
-}
-
 func (i *Index) AddTerms(terms ...index.Suggestion) error {
 	// not implemented since we do this automatically in the indexing itself
 	return nil

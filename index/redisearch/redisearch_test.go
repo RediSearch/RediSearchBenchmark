@@ -11,7 +11,7 @@ import (
 
 func TestIndex(t *testing.T) {
 	// todo: run redisearch automatically
-	t.SkipNow()
+	//t.SkipNow()
 	md := index.NewMetadata().AddField(index.NewTextField("title", 1.0)).
 		AddField(index.NewNumericField("score"))
 
@@ -45,9 +45,45 @@ func TestIndex(t *testing.T) {
 
 }
 
+func TestPaging(t *testing.T) {
+
+	md := index.NewMetadata().AddField(index.NewTextField("title", 1.0)).
+		AddField(index.NewNumericField("score"))
+
+	idx := NewDistributedIndex("td", []string{"localhost:6379"}, 4, md)
+
+	assert.NoError(t, idx.Drop())
+	assert.NoError(t, idx.Create())
+
+	N := 100
+	docs := make([]index.Document, 0, N)
+	for i := 0; i < N; i++ {
+		docs = append(docs, index.NewDocument(fmt.Sprintf("doc%d", i), float32(i)/100).Set("title", fmt.Sprintf("hello world title%d", i)).Set("score", i))
+
+	}
+	assert.NoError(t, idx.Index(docs, nil))
+	q := query.NewQuery("td", "hello").Limit(10, 10)
+	docs, total, err := idx.Search(*q)
+
+	assert.NoError(t, err)
+	assert.Len(t, docs, 10)
+	assert.Equal(t, docs[0].Id, "doc89")
+	assert.Equal(t, N, total)
+
+	q = query.NewQuery("td", "title80").Limit(0, 1)
+	docs, total, err = idx.Search(*q)
+	assert.Len(t, docs, 1)
+	assert.Equal(t, docs[0].Id, "doc80")
+	assert.Equal(t, 1, total)
+
+	q = query.NewQuery("td", "title80").Limit(5, 1)
+	docs, total, err = idx.Search(*q)
+	assert.NoError(t, err)
+	assert.Len(t, docs, 0)
+}
 func TestDistributedIndex(t *testing.T) {
 	// todo: run redisearch automatically
-	//t.SkipNow()
+	//st.SkipNow()
 	md := index.NewMetadata().AddField(index.NewTextField("title", 1.0)).
 		AddField(index.NewNumericField("score"))
 
@@ -95,7 +131,7 @@ func TestDistributedIndex(t *testing.T) {
 }
 
 func TestAutocompleter(t *testing.T) {
-
+	//t.SkipNow()
 	ac := NewAutocompleter("localhost:6379", "ac")
 
 	assert.NotNil(t, ac)

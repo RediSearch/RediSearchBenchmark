@@ -10,13 +10,3 @@ type Index interface {
 	Drop() error
 	Create() error
 }
-
-type Suggestion struct {
-	Term  string
-	Score float64
-}
-type Autocompleter interface {
-	AddTerms(terms ...Suggestion) error
-	Suggest(prefix string, num int, fuzzy bool) ([]Suggestion, error)
-	Delete() error
-}

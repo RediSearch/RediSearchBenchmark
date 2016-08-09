@@ -90,7 +90,7 @@ type searchResult struct {
 	err   error
 }
 
-func (i *DistributedIndex) mergeResults(rs []interface{}, num int) ([]index.Document, int) {
+func (i *DistributedIndex) mergeResults(rs []interface{}, offset, num int) ([]index.Document, int) {
 
 	ret := make([]index.Document, 0, num)
 	total := 0
@@ -99,14 +99,22 @@ func (i *DistributedIndex) mergeResults(rs []interface{}, num int) ([]index.Docu
 		if !ok {
 			continue
 		}
-		if len(ret) < num {
-			ret = append(ret, r.docs...)
-		}
+
+		ret = append(ret, r.docs...)
+
 		total += r.total
 	}
 
-	if len(ret) > num {
-		ret = ret[:num]
+	index.DocumentList(ret).Sort()
+
+	if len(ret) < offset {
+		ret = []index.Document{}
+	} else {
+		top := offset + num
+		if top > len(ret) {
+			top = len(ret)
+		}
+		ret = ret[offset:top]
 	}
 	return ret, total
 
@@ -114,6 +122,10 @@ func (i *DistributedIndex) mergeResults(rs []interface{}, num int) ([]index.Docu
 func (i *DistributedIndex) Search(q query.Query) (docs []index.Document, total int, err error) {
 
 	tg := i.wq.NewTaskGroup()
+
+	// the paging offset must be 0 when we send it to the servers or we won't be able to correctly merge
+	offset := q.Paging.Offset
+	q.Paging.Offset = 0
 
 	for n := 0; n < len(i.partitions); n++ {
 		tg.Submit(
@@ -126,8 +138,9 @@ func (i *DistributedIndex) Search(q query.Query) (docs []index.Document, total i
 	}
 
 	results, err := tg.Wait(i.timeout)
-	docs, total = i.mergeResults(results, int(q.Paging.Num))
-	// merge results
+
+	docs, total = i.mergeResults(results, offset, q.Paging.Num)
+
 	return docs, total, err
 
 }
@@ -216,6 +229,8 @@ func (i *DistributedIndex) mergeSuggestions(rs []interface{}, num int) ([]index.
 	if len(ret) == 0 {
 		return nil, err
 	}
+
+	index.SuggestionList(ret).Sort()
 
 	if num > len(ret) {
 		num = len(ret)
