@@ -16,7 +16,7 @@ It supports reading [Wikipedia Abstract Data Dumps](https://dumps.wikimedia.org/
 
 Output of the benchmark, running on a full Abstracts dump of the English wikipedia, on 5 redis shards over a `c4.4xlarge` EC2 instance:
 
-Benchmark | Concurrent Clients | Throughput (requests/sec) | Average Latency
+Benchmark | Concurrent Clients | Throughput (requests/sec) | Average Latency (ms)
 --- | --- | --- | --- 
 search: hello | 1 | 2737.57 | 0.36
 search: hello | 8 | 9706.18 | 0.80
