@@ -18,42 +18,37 @@ Output of the benchmark, running on a full Abstracts dump of the English wikiped
 
 Benchmark | Concurrent Clients | Throughput (requests/sec) | Average Latency
 --- | --- | --- | --- 
-search: hello| 1|2737.57|0.36
-
-redis,search: hello,8,9706.18,0.80
-redis,search: hello,16,11201.99,1.39
-redis,search: hello,32,13198.80,2.36
-redis,search: hello,64,17663.32,3.51
-redis,search: barack obama,64,16482.96,3.77
-redis,search: barack obama,1,2505.68,0.40
-redis,search: barack obama,8,8522.50,0.91
-redis,search: barack obama,16,10346.83,1.50
-redis,search: barack obama,32,11720.58,2.66
-redis,"search: ""united states of america""",1,618.86,1.62
-redis,"search: ""united states of america""",8,816.22,9.38
-redis,"search: ""united states of america""",16,816.47,18.97
-redis,"search: ""united states of america""",32,815.41,37.44
-redis,"search: ""united states of america""",64,801.75,75.61
-redis,search: manchester united,1,1513.97,0.66
-redis,search: manchester united,2,2510.13,0.79
-redis,search: manchester united,4,3192.11,1.23
-redis,search: manchester united,16,3485.66,4.43
-redis,search: manchester united,32,3512.08,8.80
-redis,search: manchester united,64,3559.03,17.29
-redis,search: manchester united,128,3483.31,34.01
-redis,suggest,1,4145.90,0.24
-redis,suggest,4,9691.04,0.41
-redis,suggest,8,12129.34,0.64
-redis,suggest,16,15268.47,1.00
-redis,suggest,32,16064.66,1.90
-redis,suggest,64,17255.77,3.51
-redis,suggest,128,17935.49,6.47
-redis,search: science,1,2718.70,0.37
-redis,search: science,8,9285.69,0.84
-redis,search: science,16,11709.39,1.33
-redis,search: science,32,12492.55,2.50
-redis,search: science,64,19381.91,3.21
-
+search: hello | 1 | 2737.57 | 0.36
+search: hello | 8 | 9706.18 | 0.80
+search: hello | 16 | 11201.99 | 1.39
+search: hello|32|13198.80|2.36
+search: hello|64|17663.32|3.51
+|  |  | | 
+search: barack obama|64|16482.96|3.77
+search: barack obama|1|2505.68|0.40
+search: barack obama|8|8522.50|0.91
+search: barack obama|16|10346.83|1.50
+search: barack obama|32|11720.58|2.66
+| | | | 
+exact: "united states of america"|1|618.86|1.62
+exact: "united states of america"|8|816.22|9.38
+exact: "united states of america"|16|816.47|18.97
+exact: "united states of america"|32|815.41|37.44
+exact: "united states of america"|64|801.75|75.61
+| | | |
+search: manchester united|1|1513.97|0.66
+search: manchester united|4|3192.11|1.23
+search: manchester united|16|3485.66|4.43
+search: manchester united|32|3512.08|8.80
+search: manchester united|64|3559.03|17.29
+| | | | 
+autocomplete (2-3 letters) |1|4145.90|0.24
+autocomplete (2-3 letters) |4|9691.04|0.41
+autocomplete (2-3 letters) |8|12129.34|0.64
+autocomplete (2-3 letters) |16|15268.47|1.00
+autocomplete (2-3 letters) |32|16064.66|1.90
+autocomplete (2-3 letters) |64|17255.77|3.51
+autocomplete (2-3 letters) |128|17935.49|6.47
 
 
 ## Benchmark output
