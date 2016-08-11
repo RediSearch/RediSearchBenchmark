@@ -10,6 +10,8 @@ import (
 	"github.com/RedisLabs/RediSearchBenchmark/query"
 )
 
+// DistributedIndex is a redisearch index aggregator, working on several redisearch indexes at once,
+// and reducing their result to one unified result.
 type DistributedIndex struct {
 	partitions []index.Index
 	completers []index.Autocompleter
@@ -18,6 +20,7 @@ type DistributedIndex struct {
 	wq         workQueue
 }
 
+// NewDistributedIndex creates a distributed index on the given redis hosts, creating sub indexes per the given number of partitions
 func NewDistributedIndex(name string, hosts []string, partitions int, md *index.Metadata) *DistributedIndex {
 
 	part := ModuloPartitioner{partitions}
@@ -31,7 +34,7 @@ func NewDistributedIndex(name string, hosts []string, partitions int, md *index.
 		completers = append(completers, NewAutocompleter(addr, fmt.Sprintf("%s.autocomplete{%d}", name, i)))
 	}
 
-	wq := NewWorkQueue(partitions * 50)
+	wq := newWorkQueue(partitions * 50)
 
 	return &DistributedIndex{
 		part:       part,
@@ -43,6 +46,7 @@ func NewDistributedIndex(name string, hosts []string, partitions int, md *index.
 
 }
 
+// Create calls the FT.CREATE command based on the metadata on all sub-indexes
 func (i *DistributedIndex) Create() error {
 	for _, s := range i.partitions {
 		if err := s.Create(); err != nil {
@@ -51,6 +55,8 @@ func (i *DistributedIndex) Create() error {
 	}
 	return nil
 }
+
+// Drop deletes all data from the index on all sub-indexes
 func (i *DistributedIndex) Drop() error {
 	for _, s := range i.partitions {
 		if err := s.Drop(); err != nil {
@@ -59,6 +65,9 @@ func (i *DistributedIndex) Drop() error {
 	}
 	return nil
 }
+
+// Index pushes a list of documents to the respective partitions. It first breaks the list into
+// sub-lists based on the partitions, and then pushes them in parallel to all sub-indexes
 func (i *DistributedIndex) Index(docs []index.Document, options interface{}) error {
 
 	splitDocs := make([][]index.Document, len(i.partitions))
@@ -84,12 +93,14 @@ func (i *DistributedIndex) Index(docs []index.Document, options interface{}) err
 
 }
 
+// searchResult represents a single result from a sub-index
 type searchResult struct {
 	docs  []index.Document
 	total int
 	err   error
 }
 
+// mergeResults merges the results from all partitions into one result based on score
 func (i *DistributedIndex) mergeResults(rs []interface{}, offset, num int) ([]index.Document, int) {
 
 	ret := make([]index.Document, 0, num)
@@ -101,7 +112,6 @@ func (i *DistributedIndex) mergeResults(rs []interface{}, offset, num int) ([]in
 		}
 
 		ret = append(ret, r.docs...)
-
 		total += r.total
 	}
 
@@ -119,6 +129,8 @@ func (i *DistributedIndex) mergeResults(rs []interface{}, offset, num int) ([]in
 	return ret, total
 
 }
+
+// Search searches the sub-indexes in parallel for the given query, and reduces their results into one result
 func (i *DistributedIndex) Search(q query.Query) (docs []index.Document, total int, err error) {
 
 	tg := i.wq.NewTaskGroup()
@@ -160,6 +172,7 @@ func (m ModuloPartitioner) PartitionFor(id string) uint32 {
 	return crc32.ChecksumIEEE([]byte(id)) % uint32(m.n)
 }
 
+// AddTerms adds suggestion terms to the autocompleter index
 func (i *DistributedIndex) AddTerms(terms ...index.Suggestion) error {
 	splits := make([][]index.Suggestion, len(i.completers))
 	for _, t := range terms {
@@ -182,6 +195,8 @@ func (i *DistributedIndex) AddTerms(terms ...index.Suggestion) error {
 	return err
 
 }
+
+// Suggest gets suggestions from the autocompleter on all sub-indexes and merges them into one result
 func (i *DistributedIndex) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion, error) {
 
 	tg := i.wq.NewTaskGroup()
@@ -204,10 +219,6 @@ func (i *DistributedIndex) Suggest(prefix string, num int, fuzzy bool) ([]index.
 		return nil, err
 	}
 	return i.mergeSuggestions(results, num)
-
-}
-
-func (i *DistributedIndex) Close() {
 
 }
 
@@ -239,6 +250,7 @@ func (i *DistributedIndex) mergeSuggestions(rs []interface{}, num int) ([]index.
 	return ret[:num], nil
 }
 
+// Delete deletes the autocomplete keys on all sub-indexes
 func (i *DistributedIndex) Delete() error {
 
 	for _, c := range i.completers {

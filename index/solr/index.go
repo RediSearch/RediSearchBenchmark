@@ -12,12 +12,15 @@ import (
 	"github.com/vanng822/go-solr/solr"
 )
 
+// Index represents an index in Solr
 type Index struct {
 	si   *solr.SolrInterface
 	name string
 	md   *index.Metadata
 }
 
+// NewIndex creates a new solr index for the given solr url and index name.
+// Metadata is ignored, we are using an automatic solr schema
 func NewIndex(url, name string, md *index.Metadata) (*Index, error) {
 	si, err := solr.NewSolrInterface(url, name)
 	if err != nil {
@@ -32,6 +35,7 @@ func NewIndex(url, name string, md *index.Metadata) (*Index, error) {
 
 }
 
+// Index indexes multiple documents on the index, with optional IndexingOptions passed to options
 func (i *Index) Index(documents []index.Document, options interface{}) error {
 
 	soldocs := make([]solr.Document, 0, len(documents))
@@ -49,6 +53,9 @@ func (i *Index) Index(documents []index.Document, options interface{}) error {
 	_, err := i.si.Add(soldocs, len(soldocs), &params)
 	return err
 }
+
+// Search searches the index for the given query, and returns documents,
+// the total number of results, or an error if something went wrong
 func (i *Index) Search(q query.Query) (docs []index.Document, total int, err error) {
 	query := solr.NewQuery()
 	query.Q(q.Term)
@@ -78,12 +85,16 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 
 	return ret, r.Results.NumFound, nil
 }
+
+// Drop deletes the index
 func (i *Index) Drop() error {
 
 	_, err := i.si.DeleteAll()
 	return err
 
 }
+
+// Create creates the index on Solr
 func (i *Index) Create() error {
 
 	ca, err := i.si.CoreAdmin()
@@ -98,6 +109,9 @@ func (i *Index) Create() error {
 	return err
 }
 
+// AddTerms doesn't do anything and is here for interface compliance reasons.
+//
+// Not implemented since we do this automatically in the indexing itself
 func (i *Index) AddTerms(terms ...index.Suggestion) error {
 	// not implemented since we do this automatically in the indexing itself
 	return nil
@@ -121,6 +135,7 @@ type SuggestResponse struct {
 	} `json:"suggest"`
 }
 
+// Suggest gets completion suggestions from solr
 func (i *Index) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion, error) {
 	s := i.si.Search(solr.NewQuery())
 
@@ -142,7 +157,7 @@ func (i *Index) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion,
 	for _, s := range res.Suggest.Autocomplete {
 		ret := make([]index.Suggestion, 0, num)
 		for _, sugg := range s.Suggestions {
-			ret = append(ret, index.Suggestion{sugg.Term, sugg.Weight})
+			ret = append(ret, index.Suggestion{Term: sugg.Term, Score: sugg.Weight})
 		}
 
 		return ret, nil
@@ -150,6 +165,9 @@ func (i *Index) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion,
 	return nil, nil
 
 }
+
+// Delete deletes all entries in the index
 func (i *Index) Delete() error {
+	i.si.DeleteAll()
 	return nil
 }

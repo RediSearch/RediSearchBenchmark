@@ -11,12 +11,12 @@ import (
 )
 
 func TestIndex(t *testing.T) {
-	t.SkipNow()
+	//t.SkipNow()
 	// todo: run redisearch automatically
 	md := index.NewMetadata().AddField(index.NewTextField("title", 1.0)).
 		AddField(index.NewNumericField("score"))
 
-	idx, err := NewIndex("http://localhost:9200", "testung", md)
+	idx, err := NewIndex("http://localhost:9200", "testung", "doc", md)
 	assert.NoError(t, err)
 	assert.NoError(t, idx.Drop())
 	assert.NoError(t, idx.Create())
@@ -46,10 +46,11 @@ func TestIndex(t *testing.T) {
 }
 
 func TestSuggest(t *testing.T) {
+
 	md := index.NewMetadata().AddField(index.NewTextField("title", 1.0)).
 		AddField(index.NewNumericField("score"))
 
-	idx, err := NewIndex("http://localhost:9200", "testung", md)
+	idx, err := NewIndex("http://localhost:9200", "testung", "doc", md)
 	assert.NoError(t, err)
 	assert.NoError(t, idx.Drop())
 	assert.NoError(t, idx.Create())

@@ -4,38 +4,41 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 	"github.com/RedisLabs/RediSearchBenchmark/query"
 	"github.com/garyburd/redigo/redis"
 )
 
+// IndexingOptions are flags passed to the the abstract Index call, which receives them as interface{}, allowing
+// for implementation specific options
 type IndexingOptions struct {
+	// the language of the document, for stemmer analysis
 	Language string
+	// whether we should use stemming on the document. NOT SUPPORTED BY THE ENGINE YET!
 	Stemming bool
-	NoSave   bool
+
+	// If set, we will not save the documents contents, just index them, for fetching ids only
+	NoSave bool
 }
 
+// Index is an interface to redisearch's redis connads
 type Index struct {
 	pool *redis.Pool
 	md   *index.Metadata
 	name string
 }
 
-const (
-	QueryTimeout = 100 * time.Millisecond
-	IndexTimeout = time.Second
-)
+var maxConns = 500
 
-var MaxConns = 500
-
+// NewIndex creates a new index connecting to the redis host, and using the given name as key prefix
 func NewIndex(addr, name string, md *index.Metadata) *Index {
 
 	ret := &Index{
 		pool: redis.NewPool(func() (redis.Conn, error) {
+			// TODO: Add timeouts. and 2 separate pools for indexing and querying, with different timeouts
 			return redis.Dial("tcp", addr)
-		}, MaxConns),
+		}, maxConns),
 		md:   md,
 		name: name,
 	}
@@ -46,6 +49,7 @@ func NewIndex(addr, name string, md *index.Metadata) *Index {
 
 }
 
+// Create configues the index and creates it on redis
 func (i *Index) Create() error {
 
 	args := redis.Args{i.name}
@@ -80,8 +84,7 @@ func (i *Index) Create() error {
 	return err
 }
 
-// Add indexes one entry in the index.
-// TODO: Add support for multiple insertions
+// Index indexes multiple documents on the index, with optional IndexingOptions passed to options
 func (i *Index) Index(docs []index.Document, options interface{}) error {
 
 	var opts IndexingOptions
@@ -136,6 +139,7 @@ func (i *Index) Index(docs []index.Document, options interface{}) error {
 	return nil
 }
 
+// convert the result from a redis query to a proper Document object
 func loadDocument(id, sc, fields interface{}) (index.Document, error) {
 
 	score, err := strconv.ParseFloat(string(sc.([]byte)), 64)
@@ -160,10 +164,8 @@ func loadDocument(id, sc, fields interface{}) (index.Document, error) {
 	return doc, nil
 }
 
-func (i *Index) Close() {
-	i.pool.Close()
-}
-
+// Search searches the index for the given query, and returns documents,
+// the total number of results, or an error if something went wrong
 func (i *Index) Search(q query.Query) (docs []index.Document, total int, err error) {
 	conn := i.pool.Get()
 	defer conn.Close()
@@ -201,6 +203,7 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 	return
 }
 
+// Drop the index. Currentl just flushes the DB - note that this will delete EVERYTHING on the redis instance
 func (i *Index) Drop() error {
 	conn := i.pool.Get()
 	defer conn.Close()

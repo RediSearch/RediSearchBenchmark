@@ -2,6 +2,7 @@ package elastic
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -10,18 +11,21 @@ import (
 	"gopkg.in/olivere/elastic.v3"
 )
 
+// Index is an ElasticSearch index
 type Index struct {
 	conn *elastic.Client
 
 	md   *index.Metadata
 	name string
+	typ  string
 }
 
-func NewIndex(addr, name string, md *index.Metadata) (*Index, error) {
+// NewIndex creates a new elasticSearch index with the given address and name. typ is the entity type
+func NewIndex(addr, name, typ string, md *index.Metadata) (*Index, error) {
 
 	client := &http.Client{
 		Transport: &http.Transport{
-			MaxIdleConnsPerHost: 500,
+			MaxIdleConnsPerHost: 200,
 		},
 		Timeout: 250 * time.Millisecond,
 	}
@@ -33,47 +37,65 @@ func NewIndex(addr, name string, md *index.Metadata) (*Index, error) {
 		conn: conn,
 		md:   md,
 		name: name,
+		typ:  typ,
 	}
 
 	return ret, nil
 
 }
 
+type mappingProperty map[string]interface{}
+
+type mapping struct {
+	Properties map[string]mappingProperty `json:"properties"`
+}
+
+// convert a fieldType to elastic mapping type string
+func fieldTypeString(f index.FieldType) (string, error) {
+	switch f {
+	case index.TextField:
+		return "string", nil
+	case index.NumericField:
+		return "double", nil
+	default:
+		return "", errors.New("Unsupported field type")
+	}
+}
+
+// Create creates the index and posts a mapping corresponding to our Metadata
 func (i *Index) Create() error {
 
-	docMapping := `
-	{
-		"mappings": {
-			"doc":{
-				"properties":{
-					"body":{
-						"type":"string"
-					},
-					"title":{
-						"type":"string"
-					}
-					
-				}
-			},
-			"autocomplete":{
-				"properties":{
-					"sugg":{
-						"type":"completion",
-						"payloads":true
-					}
-				}
-			}
+	doc := mapping{Properties: map[string]mappingProperty{}}
+	for _, f := range i.md.Fields {
+		doc.Properties[f.Name] = mappingProperty{}
+		fs, err := fieldTypeString(f.Type)
+		if err != nil {
+			return err
 		}
+		doc.Properties[f.Name]["type"] = fs
 	}
-	`
 
-	_, err := i.conn.CreateIndex(i.name).BodyJson(docMapping).Do()
+	// we currently manually create the autocomplete mapping
+	ac := mapping{
+		Properties: map[string]mappingProperty{
+			"sugg": mappingProperty{
+				"type":     "completion",
+				"payloads": true,
+			},
+		},
+	}
+
+	mappings := map[string]mapping{
+		i.typ:          doc,
+		"autocomplete": ac,
+	}
+
+	_, err := i.conn.CreateIndex(i.name).BodyJson(map[string]interface{}{"mappings": mappings}).Do()
 
 	return err
 }
 
-// Add indexes one entry in the index.
-// TODO: Add support for multiple insertions
+// Index indexes multiple documents
 func (i *Index) Index(docs []index.Document, opts interface{}) error {
 
 	blk := i.conn.Bulk()
@@ -88,6 +110,8 @@ func (i *Index) Index(docs []index.Document, opts interface{}) error {
 	return err
 }
 
+// Search searches the index for the given query, and returns documents,
+// the total number of results, or an error if something went wrong
 func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 
 	eq := elastic.NewQueryStringQuery(q.Term)
@@ -116,12 +140,14 @@ func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 	return ret, int(res.TotalHits()), err
 }
 
+// Drop deletes the index
 func (i *Index) Drop() error {
 	i.conn.DeleteIndex(i.name).Do()
 
 	return nil
 }
 
+// AddTerms add suggestion terms to the suggester index
 func (i *Index) AddTerms(terms ...index.Suggestion) error {
 	blk := i.conn.Bulk()
 
@@ -137,6 +163,9 @@ func (i *Index) AddTerms(terms ...index.Suggestion) error {
 	return err
 
 }
+
+// Suggest gets completion suggestions for a given prefix.
+// TODO: fuzzy not supported yet
 func (i *Index) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion, error) {
 
 	s := elastic.NewCompletionSuggester("autocomplete").Field("sugg").Text(prefix).Size(num)
@@ -152,7 +181,7 @@ func (i *Index) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion,
 
 			ret := make([]index.Suggestion, 0, len(opts))
 			for _, op := range opts {
-				ret = append(ret, index.Suggestion{op.Text, float64(op.Score)})
+				ret = append(ret, index.Suggestion{Term: op.Text, Score: float64(op.Score)})
 			}
 			return ret, nil
 		}

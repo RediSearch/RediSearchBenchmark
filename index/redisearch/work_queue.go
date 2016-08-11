@@ -21,7 +21,8 @@ func (wq workQueue) poolWorker() {
 	}
 }
 
-func NewWorkQueue(numWorkers int) workQueue {
+// newWorkQueue creates a new workQueue with N workers
+func newWorkQueue(numWorkers int) workQueue {
 	wc := make(workQueue)
 	for i := 0; i < numWorkers; i++ {
 		go wc.poolWorker()

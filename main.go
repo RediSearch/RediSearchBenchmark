@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -14,12 +15,14 @@ import (
 	"github.com/RedisLabs/RediSearchBenchmark/query"
 )
 
+// IndexName is the name of our index on all engines
 const IndexName = "wik"
 
 var indexMetadata = index.NewMetadata().
 	AddField(index.NewTextField("title", 10)).
 	AddField(index.NewTextField("body", 1))
 
+// selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
 func selectIndex(engine string, hosts []string, partitions int) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
@@ -69,12 +72,21 @@ func main() {
 	// select index to run
 	idx, ac, opts := selectIndex(*engine, servers, *partitions)
 
+	// Search benchmark
 	if *benchmark == "search" {
 		name := fmt.Sprintf("search: %s", *qs)
 		Benchmark(*conc, duration, *engine, name, *outfile, SearchBenchmark(queries, idx, opts))
-	} else if *benchmark == "suggest" {
+		os.Exit(0)
+	}
+
+	// Auto-suggest benchmark
+	if *benchmark == "suggest" {
 		Benchmark(*conc, duration, *engine, "suggest", *outfile, AutocompleteBenchmark(ac, *fuzzy))
-	} else if *fileName != "" && *benchmark == "" {
+		os.Exit(0)
+	}
+
+	// ingest documents into the selected engine
+	if *fileName != "" && *benchmark == "" {
 		if ac != nil {
 			ac.Delete()
 		}
@@ -92,18 +104,11 @@ func main() {
 		if err := ingest.IngestDocuments(*fileName, wr, idx, ac, nil, 50000); err != nil {
 			panic(err)
 		}
+
+		os.Exit(0)
 	}
-	//	//LoadWikipedia(*fileName, modIdx, store)
-	//	if *benchmark {
 
-	//		f, err := os.Create("prof.out")
-	//		if err != nil {
-	//			log.Fatal(err)
-	//		}
-	//		pprof.StartCPUProfile(f)
-	//		defer pprof.StopCPUProfile()
-
-	//		Benchmark(queries, *conc, modIdx, store)
-	//	}
-
+	fmt.Fprintln(os.Stderr, "No benchmark or input file specified")
+	flag.Usage()
+	os.Exit(-1)
 }

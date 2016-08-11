@@ -7,12 +7,15 @@ import (
 	"math/rand"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 	"github.com/RedisLabs/RediSearchBenchmark/query"
 )
 
+// SearchBenchmark returns a closure of a function for the benchmarker to run, using a given index
+// and options, on a set of queries
 func SearchBenchmark(queries []string, idx index.Index, opts interface{}) func() error {
 
 	counter := 0
@@ -25,6 +28,8 @@ func SearchBenchmark(queries []string, idx index.Index, opts interface{}) func()
 
 }
 
+// AutocompleteBenchmark returns a configured autocomplete benchmarking function to be run by
+// the benchmarker
 func AutocompleteBenchmark(ac index.Autocompleter, fuzzy bool) func() error {
 	counter := 0
 	sz := len(prefixes)
@@ -34,6 +39,13 @@ func AutocompleteBenchmark(ac index.Autocompleter, fuzzy bool) func() error {
 		return err
 	}
 }
+
+// Benchmark runs a given function f for the given duration, and outputs the throughput and latency of the function.
+//
+// It receives metadata like the engine we are running and the title of the specific benchmark, and writes these along
+// with the results to a CSV file given by outfile.
+//
+// If outfile is "-" we write the result to stdout
 func Benchmark(concurrency int, duration time.Duration, engine, title string, outfile string, f func() error) {
 
 	var out io.WriteCloser
@@ -48,14 +60,12 @@ func Benchmark(concurrency int, duration time.Duration, engine, title string, ou
 		defer out.Close()
 	}
 
-	//	queries = []string{"weezer", "germany", "a", "music", "music of the spheres", "abba", "queen",
-	//		"nirvana", "benjamin netanyahu", "redis", "redis labs", "german history"} // "computer science", "machine learning"}
-	//queries := []string{"earth Though is", "school etc"}
 	startTime := time.Now()
-	totalTime := time.Duration(0)
+	// the total time it took to run the functions, to measure average latency, in nanoseconds
+	var totalTime uint64
+	var total uint64
 	wg := sync.WaitGroup{}
 
-	total := 0
 	end := time.Now().Add(duration)
 
 	for i := 0; i < concurrency; i++ {
@@ -68,9 +78,10 @@ func Benchmark(concurrency int, duration time.Duration, engine, title string, ou
 				if err = f(); err != nil {
 					panic(err)
 				}
-				total++
 
-				totalTime += time.Since(tst)
+				// update the total requests performed and total time
+				atomic.AddUint64(&total, 1)
+				atomic.AddUint64(&totalTime, uint64(time.Since(tst)))
 
 			}
 			wg.Done()
@@ -81,6 +92,7 @@ func Benchmark(concurrency int, duration time.Duration, engine, title string, ou
 	avgLatency := (float64(totalTime) / float64(total)) / float64(time.Millisecond)
 	rate := float64(total) / (float64(time.Since(startTime)) / float64(time.Second))
 
+	// Output the results to CSV
 	w := csv.NewWriter(out)
 
 	err = w.Write([]string{engine, title,
