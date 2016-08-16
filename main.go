@@ -31,7 +31,7 @@ func selectIndex(engine string, hosts []string, partitions int) (index.Index, in
 		idx := redisearch.NewDistributedIndex(IndexName, hosts, partitions, indexMetadata)
 		return idx, idx, query.QueryVerbatim
 	case "elastic":
-		idx, err := elastic.NewIndex(hosts[0], IndexName, indexMetadata)
+		idx, err := elastic.NewIndex(hosts[0], IndexName, "doc", indexMetadata)
 		if err != nil {
 			panic(err)
 		}
