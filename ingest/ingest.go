@@ -31,8 +31,8 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 		return err
 	}
 
-	docs := make([]index.Document, chunk)
-	terms := make([]index.Suggestion, chunk)
+	docs := make([]index.Document, chunk*2)
+	terms := make([]index.Suggestion, chunk*2)
 
 	//freqs := map[string]int{}
 	st := time.Now()
@@ -41,6 +41,7 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 	i := 0
 	n := 0
 	dt := 0
+	totalDt := 0
 
 	for doc := range ch {
 
@@ -67,9 +68,9 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 				//					fmt.Printf("%d %s\n", v, k)
 				//				}
 				//				os.Exit(0)
-				if err := ac.AddTerms(terms...); err != nil {
+				/*if err := ac.AddTerms(terms...); err != nil {
 					return err
-				}
+				}*/
 				nterms = 0
 			}
 
@@ -82,6 +83,7 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 			switch s := v.(type) {
 			case string:
 				dt += len(s) + len(k)
+				totalDt += len(s) + len(k)
 			}
 		}
 
@@ -97,7 +99,7 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 		if i%chunk == 0 {
 			rate := float32(n) / (float32(time.Since(st).Seconds()))
 			dtrate := float32(dt) / (float32(time.Since(st).Seconds())) / float32(1024*1024)
-			fmt.Println(i, "rate: ", rate, "d/s. data rate: ", dtrate, "MB/s")
+			fmt.Println(i, "rate: ", rate, "d/s. data rate: ", dtrate, "MB/s", "total data ingested", float32(totalDt)/float32(1024*1024))
 			st = time.Now()
 			n = 0
 			dt = 0

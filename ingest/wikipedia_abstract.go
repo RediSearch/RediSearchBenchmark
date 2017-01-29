@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path"
 	"strconv"
@@ -89,7 +90,7 @@ func (r *WikipediaAbstractsReader) LoadScores(fileName string) error {
 func (wr *WikipediaAbstractsReader) Read(r io.Reader) (<-chan index.Document, error) {
 
 	dec := xml.NewDecoder(r)
-	ch := make(chan index.Document)
+	ch := make(chan index.Document, 1000)
 	go func() {
 
 		tok, err := dec.RawToken()
@@ -120,7 +121,8 @@ func (wr *WikipediaAbstractsReader) Read(r io.Reader) (<-chan index.Document, er
 							doc := index.NewDocument(id, wr.score(id)).
 								Set("title", title).
 								Set("body", body).
-								Set("url", strings.TrimSpace(props["url"]))
+								Set("url", strings.TrimSpace(props["url"])).
+								Set("score", rand.Int31n(50000))
 							ch <- doc
 						}
 					}

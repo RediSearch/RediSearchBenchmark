@@ -20,7 +20,8 @@ const IndexName = "wik"
 
 var indexMetadata = index.NewMetadata().
 	AddField(index.NewTextField("title", 10)).
-	AddField(index.NewTextField("body", 1))
+	AddField(index.NewTextField("body", 1)).
+	AddField(index.NewNumericField("score"))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
 func selectIndex(engine string, hosts []string, partitions int) (index.Index, index.Autocompleter, interface{}) {
@@ -101,7 +102,7 @@ func main() {
 			}
 		}
 
-		if err := ingest.IngestDocuments(*fileName, wr, idx, ac, nil, 50000); err != nil {
+		if err := ingest.IngestDocuments(*fileName, wr, idx, ac, redisearch.IndexingOptions{NoSave:true}, 1000); err != nil {
 			panic(err)
 		}
 

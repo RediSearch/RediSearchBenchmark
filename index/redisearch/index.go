@@ -20,11 +20,18 @@ type IndexingOptions struct {
 
 	// If set, we will not save the documents contents, just index them, for fetching ids only
 	NoSave bool
+
+	NoFieldFlags bool
+
+	NoScoreIndexes bool
+
+	NoOffsetVectors bool
 }
 
 // Index is an interface to redisearch's redis connads
 type Index struct {
 	pool *redis.Pool
+
 	md   *index.Metadata
 	name string
 }
@@ -35,11 +42,13 @@ var maxConns = 500
 func NewIndex(addr, name string, md *index.Metadata) *Index {
 
 	ret := &Index{
+
 		pool: redis.NewPool(func() (redis.Conn, error) {
 			// TODO: Add timeouts. and 2 separate pools for indexing and querying, with different timeouts
 			return redis.Dial("tcp", addr)
 		}, maxConns),
-		md:   md,
+		md: md,
+
 		name: name,
 	}
 	ret.pool.TestOnBorrow = nil
@@ -52,9 +61,10 @@ func NewIndex(addr, name string, md *index.Metadata) *Index {
 // Create configues the index and creates it on redis
 func (i *Index) Create() error {
 
-	args := redis.Args{i.name}
+	args := redis.Args{i.name, "NOSCOREIDX", "SCHEMA"}
 
 	for _, f := range i.md.Fields {
+
 		switch f.Type {
 		case index.TextField:
 
@@ -62,7 +72,8 @@ func (i *Index) Create() error {
 			if !ok {
 				return errors.New("Invalid text field options type")
 			}
-			args = append(args, f.Name, opts.Weight)
+			args = append(args, f.Name, "TEXT", "WEIGHT", opts.Weight)
+
 			// stemming per field not supported yet
 
 		case index.NumericField:
@@ -79,7 +90,7 @@ func (i *Index) Create() error {
 
 	conn := i.pool.Get()
 	defer conn.Close()
-	//fmt.Println(args)
+	fmt.Println(args)
 	_, err := conn.Do("FT.CREATE", args...)
 	return err
 }
