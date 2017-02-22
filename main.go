@@ -13,6 +13,7 @@ import (
 	"github.com/RedisLabs/RediSearchBenchmark/index/solr"
 	"github.com/RedisLabs/RediSearchBenchmark/ingest"
 	"github.com/RedisLabs/RediSearchBenchmark/query"
+	"github.com/RedisLabs/RediSearchBenchmark/synth"
 )
 
 // IndexName is the name of our index on all engines
@@ -56,6 +57,7 @@ func main() {
 	scoreFile := flag.String("scores", "", "read scores of documents CSV for indexing")
 	engine := flag.String("engine", "redis", "The search backend to run")
 	benchmark := flag.String("benchmark", "", "[search|suggest] - if set, we run the given benchmark")
+	random := flag.Int("random", 0, "Generate random documents with terms like term0..term{N}")
 	fuzzy := flag.Bool("fuzzy", false, "For redis only - benchmark fuzzy auto suggest")
 	seconds := flag.Int("duration", 5, "number of seconds to run the benchmark")
 	conc := flag.Int("c", 4, "benchmark concurrency")
@@ -86,6 +88,33 @@ func main() {
 		os.Exit(0)
 	}
 
+	// ingest random documents
+	if *random > 0 {
+		idx.Drop()
+		idx.Create()
+		N := 1000
+		gen := synth.NewDocumentGenerator(*random, map[string][2]int{"title": {5, 10}, "body": {10, 20}})
+		chunk := make([]index.Document, N)
+		n := 0
+		ch := make(chan index.Document, N)
+		go func() {
+			for {
+				ch <- gen.Generate(0)
+			}
+		}()
+		for {
+
+			for i := 0; i < N; i++ {
+				chunk[i] = <-ch
+				//fmt.Println(chunk[i])
+				n++
+			}
+
+			idx.Index(chunk, nil)
+			fmt.Println(n)
+		}
+
+	}
 	// ingest documents into the selected engine
 	if *fileName != "" && *benchmark == "" {
 		if ac != nil {
@@ -102,7 +131,7 @@ func main() {
 			}
 		}
 
-		if err := ingest.IngestDocuments(*fileName, wr, idx, ac, redisearch.IndexingOptions{NoSave:true}, 1000); err != nil {
+		if err := ingest.IngestDocuments(*fileName, wr, idx, ac, redisearch.IndexingOptions{NoSave: true}, 1000); err != nil {
 			panic(err)
 		}
 
