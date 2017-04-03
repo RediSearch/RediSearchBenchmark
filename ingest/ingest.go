@@ -42,7 +42,17 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 	n := 0
 	dt := 0
 	totalDt := 0
-
+	doch := make(chan index.Document, 100)
+	for w := 0; w < 400; w++ {
+		go func(doch chan index.Document) {
+			for doc := range doch {
+				if doc.Id != "" {
+					//fmt.Println(doc)
+					idx.Index([]index.Document{doc}, opts)
+				}
+			}
+		}(doch)
+	}
 	for doc := range ch {
 
 		docs[i%chunk] = doc
@@ -90,9 +100,11 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 		i++
 		n++
 		if i%chunk == 0 {
-			if err := idx.Index(docs, opts); err != nil {
-				return err
+			//var _docs []index.Document
+			for _, d := range docs {
+				doch <- d
 			}
+
 		}
 
 		// print report every CHUNK documents
@@ -107,7 +119,8 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 	}
 
 	if i%chunk != 0 {
-		return idx.Index(docs[:i%chunk], opts)
+		go idx.Index(docs[:i%chunk], opts)
+		return nil
 	}
 	return nil
 }

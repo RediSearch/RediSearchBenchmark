@@ -25,13 +25,22 @@ var indexMetadata = index.NewMetadata().
 	AddField(index.NewNumericField("score"))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
-func selectIndex(engine string, hosts []string, partitions int) (index.Index, index.Autocompleter, interface{}) {
+func selectIndex(engine string, hosts []string, partitions int, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
 	case "redis":
+
 		//return redisearch.NewIndex(hosts[0], "wik{0}", indexMetadata)
 		idx := redisearch.NewDistributedIndex(IndexName, hosts, partitions, indexMetadata)
 		return idx, idx, query.QueryVerbatim
+
+	case "redismod":
+		indexMetadata.Options = redisearch.IndexingOptions{Prefix: cmdPrefix}
+		//return redisearch.NewIndex(hosts[0], "wik{0}", indexMetadata)
+		idx := redisearch.NewIndex(hosts[0], "wiki", indexMetadata)
+		ac := redisearch.NewAutocompleter(hosts[0], "ac")
+		return idx, ac, query.QueryVerbatim
+
 	case "elastic":
 		idx, err := elastic.NewIndex(hosts[0], IndexName, "doc", indexMetadata)
 		if err != nil {
@@ -64,6 +73,7 @@ func main() {
 	qs := flag.String("queries", "hello world", "comma separated list of queries to benchmark")
 	outfile := flag.String("o", "benchmark.csv", "results output file. set to - for stdout")
 	duration := time.Second * time.Duration(*seconds)
+	cmdPrefix := flag.String("prefix", "FT", "Command prefix for FT module")
 
 	flag.Parse()
 	servers := strings.Split(*hosts, ",")
@@ -73,7 +83,7 @@ func main() {
 	queries := strings.Split(*qs, ",")
 
 	// select index to run
-	idx, ac, opts := selectIndex(*engine, servers, *partitions)
+	idx, ac, opts := selectIndex(*engine, servers, *partitions, *cmdPrefix)
 
 	// Search benchmark
 	if *benchmark == "search" {
@@ -92,6 +102,7 @@ func main() {
 	if *random > 0 {
 		idx.Drop()
 		idx.Create()
+
 		N := 1000
 		gen := synth.NewDocumentGenerator(*random, map[string][2]int{"title": {5, 10}, "body": {10, 20}})
 		chunk := make([]index.Document, N)
@@ -131,7 +142,8 @@ func main() {
 			}
 		}
 
-		if err := ingest.IngestDocuments(*fileName, wr, idx, ac, redisearch.IndexingOptions{NoSave: true}, 1000); err != nil {
+		if err := ingest.IngestDocuments(*fileName, wr, idx, ac, redisearch.IndexingOptions{NoSave: true,
+			NoOffsetVectors: true}, 1000); err != nil {
 			panic(err)
 		}
 

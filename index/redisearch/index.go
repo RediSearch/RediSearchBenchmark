@@ -26,14 +26,17 @@ type IndexingOptions struct {
 	NoScoreIndexes bool
 
 	NoOffsetVectors bool
+
+	Prefix string
 }
 
 // Index is an interface to redisearch's redis connads
 type Index struct {
 	pool *redis.Pool
 
-	md   *index.Metadata
-	name string
+	md            *index.Metadata
+	name          string
+	commandPrefix string
 }
 
 var maxConns = 500
@@ -50,6 +53,15 @@ func NewIndex(addr, name string, md *index.Metadata) *Index {
 		md: md,
 
 		name: name,
+
+		commandPrefix: "FT",
+	}
+	if md != nil && md.Options != nil {
+		if opts, ok := md.Options.(IndexingOptions); ok {
+			if opts.Prefix != "" {
+				ret.commandPrefix = md.Options.(IndexingOptions).Prefix
+			}
+		}
 	}
 	ret.pool.TestOnBorrow = nil
 	//ret.pool.MaxActive = ret.pool.MaxIdle
@@ -61,7 +73,7 @@ func NewIndex(addr, name string, md *index.Metadata) *Index {
 // Create configues the index and creates it on redis
 func (i *Index) Create() error {
 
-	args := redis.Args{i.name, "NOSCOREIDX", "SCHEMA"}
+	args := redis.Args{i.name, "SCHEMA"}
 
 	for _, f := range i.md.Fields {
 
@@ -91,7 +103,7 @@ func (i *Index) Create() error {
 	conn := i.pool.Get()
 	defer conn.Close()
 	fmt.Println(args)
-	_, err := conn.Do("FT.CREATE", args...)
+	_, err := conn.Do(i.commandPrefix+".CREATE", args...)
 	return err
 }
 
@@ -130,7 +142,7 @@ func (i *Index) Index(docs []index.Document, options interface{}) error {
 			args = append(args, k, f)
 		}
 
-		if err := conn.Send("FT.ADD", args...); err != nil {
+		if err := conn.Send(i.commandPrefix+".ADD", args...); err != nil {
 			return err
 		}
 		n++
@@ -189,7 +201,7 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 		args = append(args, "NOCONTENT")
 	}
 
-	res, err := redis.Values(conn.Do("FT.SEARCH", args...))
+	res, err := redis.Values(conn.Do(i.commandPrefix+".SEARCH", args...))
 	if err != nil {
 		return
 	}

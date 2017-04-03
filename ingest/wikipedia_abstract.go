@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"path"
 	"strconv"
@@ -121,8 +120,8 @@ func (wr *WikipediaAbstractsReader) Read(r io.Reader) (<-chan index.Document, er
 							doc := index.NewDocument(id, wr.score(id)).
 								Set("title", title).
 								Set("body", body).
-								Set("url", strings.TrimSpace(props["url"])).
-								Set("score", rand.Int31n(50000))
+								Set("url", strings.TrimSpace(props["url"]))
+								//Set("score", rand.Int31n(50000))
 							ch <- doc
 						}
 					}
