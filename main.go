@@ -17,27 +17,23 @@ import (
 )
 
 // IndexName is the name of our index on all engines
-const IndexName = "wik"
+const IndexName = "rd"
 
 var indexMetadata = index.NewMetadata().
-	AddField(index.NewTextField("title", 10)).
 	AddField(index.NewTextField("body", 1)).
-	AddField(index.NewNumericField("score"))
+	AddField(index.NewTextField("author", 5)).
+	AddField(index.NewTextField("sub", 5)).
+	AddField(index.NewNumericField("date")).
+	AddField(index.NewNumericField("ups"))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
 func selectIndex(engine string, hosts []string, partitions int, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
 	case "redis":
-
-		//return redisearch.NewIndex(hosts[0], "wik{0}", indexMetadata)
-		idx := redisearch.NewDistributedIndex(IndexName, hosts, partitions, indexMetadata)
-		return idx, idx, query.QueryVerbatim
-
-	case "redismod":
 		indexMetadata.Options = redisearch.IndexingOptions{Prefix: cmdPrefix}
 		//return redisearch.NewIndex(hosts[0], "wik{0}", indexMetadata)
-		idx := redisearch.NewIndex(hosts[0], "wiki", indexMetadata)
+		idx := redisearch.NewIndex(hosts[0], IndexName, indexMetadata)
 		ac := redisearch.NewAutocompleter(hosts[0], "ac")
 		return idx, ac, query.QueryVerbatim
 
@@ -63,7 +59,7 @@ func main() {
 	hosts := flag.String("hosts", "localhost:6379", "comma separated list of host:port to redis nodes")
 	partitions := flag.Int("shards", 1, "the number of partitions we want (AT LEAST the number of cluster shards)")
 	fileName := flag.String("file", "", "Input file to ingest data from (wikipedia abstracts)")
-	scoreFile := flag.String("scores", "", "read scores of documents CSV for indexing")
+	//scoreFile := flag.String("scores", "", "read scores of documents CSV for indexing")
 	engine := flag.String("engine", "redis", "The search backend to run")
 	benchmark := flag.String("benchmark", "", "[search|suggest] - if set, we run the given benchmark")
 	random := flag.Int("random", 0, "Generate random documents with terms like term0..term{N}")
@@ -134,16 +130,15 @@ func main() {
 
 		idx.Drop()
 		idx.Create()
-		wr := ingest.NewWikipediaAbstractsReader()
+		wr := &ingest.RedditReader{}
 
-		if *scoreFile != "" {
-			if err := wr.LoadScores(*scoreFile); err != nil {
-				panic(err)
-			}
-		}
+		// if *scoreFile != "" {
+		// 	if err := wr.LoadScores(*scoreFile); err != nil {
+		// 		panic(err)
+		// 	}
+		// }
 
-		if err := ingest.IngestDocuments(*fileName, wr, idx, ac, redisearch.IndexingOptions{NoSave: true,
-			NoOffsetVectors: true}, 1000); err != nil {
+		if err := ingest.IngestDocuments(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, 1000); err != nil {
 			panic(err)
 		}
 

@@ -43,7 +43,7 @@ func IngestDocuments(fileName string, r DocumentReader, idx index.Index, ac inde
 	dt := 0
 	totalDt := 0
 	doch := make(chan index.Document, 100)
-	for w := 0; w < 400; w++ {
+	for w := 0; w < 200; w++ {
 		go func(doch chan index.Document) {
 			for doc := range doch {
 				if doc.Id != "" {
