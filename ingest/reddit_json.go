@@ -13,7 +13,7 @@ import (
 type redditDocument struct {
 	Author     string  `json:"author"`
 	Body       string  `json:"body"`
-	Created    string  `json:"created_utc"`
+	Created    int64   `json:"created_utc"`
 	Id         string  `json:"id"`
 	Score      int64   `json:"score"`
 	Ups        int64   `json:"ups"`

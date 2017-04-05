@@ -33,7 +33,7 @@ func selectIndex(engine string, hosts []string, partitions int, cmdPrefix string
 	case "redis":
 		indexMetadata.Options = redisearch.IndexingOptions{Prefix: cmdPrefix}
 		//return redisearch.NewIndex(hosts[0], "wik{0}", indexMetadata)
-		idx := redisearch.NewIndex(hosts[0], IndexName, indexMetadata)
+		idx := redisearch.NewIndex(hosts, IndexName, indexMetadata)
 		ac := redisearch.NewAutocompleter(hosts[0], "ac")
 		return idx, ac, query.QueryVerbatim
 

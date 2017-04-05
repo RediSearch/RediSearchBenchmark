@@ -3,7 +3,10 @@ package redisearch
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"strconv"
+
+	"time"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 	"github.com/RedisLabs/RediSearchBenchmark/query"
@@ -32,8 +35,8 @@ type IndexingOptions struct {
 
 // Index is an interface to redisearch's redis connads
 type Index struct {
-	pool *redis.Pool
-
+	pools         map[string]*redis.Pool
+	hosts         []string
 	md            *index.Metadata
 	name          string
 	commandPrefix string
@@ -41,15 +44,36 @@ type Index struct {
 
 var maxConns = 500
 
+func (i *Index) getConn() redis.Conn {
+	host := i.hosts[rand.Intn(len(i.hosts))]
+	pool, found := i.pools[host]
+	if !found {
+		pool = redis.NewPool(func() (redis.Conn, error) {
+			// TODO: Add timeouts. and 2 separate pools for indexing and querying, with different timeouts
+			return redis.Dial("tcp", host)
+		}, maxConns)
+		pool.TestOnBorrow = func(c redis.Conn, t time.Time) error {
+			if time.Since(t).Seconds() > 3 {
+				_, err := c.Do("PING")
+				return err
+			}
+			return nil
+		}
+
+		i.pools[host] = pool
+	}
+	return pool.Get()
+
+}
+
 // NewIndex creates a new index connecting to the redis host, and using the given name as key prefix
-func NewIndex(addr, name string, md *index.Metadata) *Index {
+func NewIndex(addrs []string, name string, md *index.Metadata) *Index {
 
 	ret := &Index{
 
-		pool: redis.NewPool(func() (redis.Conn, error) {
-			// TODO: Add timeouts. and 2 separate pools for indexing and querying, with different timeouts
-			return redis.Dial("tcp", addr)
-		}, maxConns),
+		pools: map[string]*redis.Pool{},
+		hosts: addrs,
+
 		md: md,
 
 		name: name,
@@ -63,7 +87,6 @@ func NewIndex(addr, name string, md *index.Metadata) *Index {
 			}
 		}
 	}
-	ret.pool.TestOnBorrow = nil
 	//ret.pool.MaxActive = ret.pool.MaxIdle
 
 	return ret
@@ -100,7 +123,7 @@ func (i *Index) Create() error {
 
 	}
 
-	conn := i.pool.Get()
+	conn := i.getConn()
 	defer conn.Close()
 	fmt.Println(args)
 	_, err := conn.Do(i.commandPrefix+".CREATE", args...)
@@ -118,7 +141,7 @@ func (i *Index) Index(docs []index.Document, options interface{}) error {
 		}
 	}
 
-	conn := i.pool.Get()
+	conn := i.getConn()
 	defer conn.Close()
 
 	n := 0
@@ -190,7 +213,7 @@ func loadDocument(id, sc, fields interface{}) (index.Document, error) {
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
 func (i *Index) Search(q query.Query) (docs []index.Document, total int, err error) {
-	conn := i.pool.Get()
+	conn := i.getConn()
 	defer conn.Close()
 
 	args := redis.Args{i.name, q.Term, "LIMIT", q.Paging.Offset, q.Paging.Num, "WITHSCORES"}
@@ -228,7 +251,7 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 
 // Drop the index. Currentl just flushes the DB - note that this will delete EVERYTHING on the redis instance
 func (i *Index) Drop() error {
-	conn := i.pool.Get()
+	conn := i.getConn()
 	defer conn.Close()
 
 	_, err := conn.Do("FLUSHDB")
