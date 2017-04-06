@@ -1,11 +1,12 @@
 package ingest
 
 import (
-	"fmt"
 	"io"
-	"os"
 
+	"compress/bzip2"
 	"encoding/json"
+
+	"log"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 )
@@ -24,32 +25,32 @@ type redditDocument struct {
 
 type RedditReader struct{}
 
-func (rr *RedditReader) Read(r io.Reader) (<-chan index.Document, error) {
-
-	jr := json.NewDecoder(r)
+func (rr *RedditReader) Read(r io.Reader, ch chan index.Document) error {
+	log.Println("Reddit reader opening", r)
+	bz := bzip2.NewReader(r)
+	jr := json.NewDecoder(bz)
 
 	var rd redditDocument
 
-	ch := make(chan index.Document, 1000)
-	go func() {
-		var err error
+	//go func() {
+	var err error
 
-		for err != io.EOF {
+	for err != io.EOF {
 
-			if err := jr.Decode(&rd); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				continue
-			}
-			doc := index.NewDocument(rd.Id, float32(rd.Score)).
-				Set("body", rd.Body).
-				Set("author", rd.Author).
-				Set("sub", rd.Subreddit).
-				Set("date", rd.Created).
-				Set("ups", rd.Ups)
-
-			ch <- doc
+		if err := jr.Decode(&rd); err != nil {
+			log.Printf("Error decoding json: %s", err)
+			break
 		}
-		close(ch)
-	}()
-	return ch, nil
+		doc := index.NewDocument(rd.Id, float32(rd.Score)).
+			Set("body", rd.Body).
+			Set("author", rd.Author).
+			Set("sub", rd.Subreddit).
+			Set("date", rd.Created).
+			Set("ups", rd.Ups)
+
+		ch <- doc
+	}
+	//close(ch)
+	//}()
+	return nil
 }

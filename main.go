@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"runtime"
+
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 	"github.com/RedisLabs/RediSearchBenchmark/index/elastic"
 	"github.com/RedisLabs/RediSearchBenchmark/index/redisearch"
@@ -59,6 +61,9 @@ func main() {
 	hosts := flag.String("hosts", "localhost:6379", "comma separated list of host:port to redis nodes")
 	partitions := flag.Int("shards", 1, "the number of partitions we want (AT LEAST the number of cluster shards)")
 	fileName := flag.String("file", "", "Input file to ingest data from (wikipedia abstracts)")
+	dirName := flag.String("dir", "", "Recursively read all files in a directory")
+	fileMatch := flag.String("match", ".*", "When reading directories, match only files with this glob")
+
 	//scoreFile := flag.String("scores", "", "read scores of documents CSV for indexing")
 	engine := flag.String("engine", "redis", "The search backend to run")
 	benchmark := flag.String("benchmark", "", "[search|suggest] - if set, we run the given benchmark")
@@ -123,7 +128,7 @@ func main() {
 
 	}
 	// ingest documents into the selected engine
-	if *fileName != "" && *benchmark == "" {
+	if (*fileName != "" || *dirName != "") && *benchmark == "" {
 		if ac != nil {
 			ac.Delete()
 		}
@@ -138,8 +143,15 @@ func main() {
 		// 	}
 		// }
 
-		if err := ingest.IngestDocuments(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, 1000); err != nil {
-			panic(err)
+		if *fileName != "" {
+
+			if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, 1000); err != nil {
+				panic(err)
+			}
+		} else if *dirName != "" {
+			ingest.ReadDir(*dirName, *fileMatch, wr, idx, nil, redisearch.IndexingOptions{},
+				1000, runtime.NumCPU(), 250)
+
 		}
 
 		os.Exit(0)
