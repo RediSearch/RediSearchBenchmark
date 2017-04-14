@@ -25,8 +25,8 @@ var indexMetadata = index.NewMetadata().
 	AddField(index.NewTextField("body", 1)).
 	AddField(index.NewTextField("author", 5)).
 	AddField(index.NewTextField("sub", 5)).
-	AddField(index.NewNumericField("date")).
-	AddField(index.NewNumericField("ups"))
+	AddField(index.NewNumericField("date"))
+	//AddField(index.NewNumericField("ups"))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
 func selectIndex(engine string, hosts []string, partitions int, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
