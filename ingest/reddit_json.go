@@ -2,25 +2,40 @@ package ingest
 
 import (
 	"io"
+	"strings"
 
 	"compress/bzip2"
 	"encoding/json"
 
 	"log"
 
+	"strconv"
+
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 )
 
+type timestamp int64
+
+func (t *timestamp) UnmarshalJSON(b []byte) (err error) {
+	s := strings.Trim(string(b), "\"")
+	var i int64
+	if i, err = strconv.ParseInt(s, 10, 64); err == nil {
+		*t = timestamp(i)
+	}
+
+	return err
+}
+
 type redditDocument struct {
-	Author     string  `json:"author"`
-	Body       string  `json:"body"`
-	Created    int64   `json:"created_utc"`
-	Id         string  `json:"id"`
-	Score      int64   `json:"score"`
-	Ups        int64   `json:"ups"`
-	Downs      int64   `json:"downs"`
-	Subreddit  string  `json:"subreddit"`
-	UvoteRatio float32 `json:"upvote_ratio"`
+	Author     string    `json:"author"`
+	Body       string    `json:"body"`
+	Created    timestamp `json:"created_utc"`
+	Id         string    `json:"id"`
+	Score      int64     `json:"score"`
+	Ups        int64     `json:"ups"`
+	Downs      int64     `json:"downs"`
+	Subreddit  string    `json:"subreddit"`
+	UvoteRatio float32   `json:"upvote_ratio"`
 }
 
 type RedditReader struct{}
@@ -45,7 +60,7 @@ func (rr *RedditReader) Read(r io.Reader, ch chan index.Document) error {
 			Set("body", rd.Body).
 			Set("author", rd.Author).
 			Set("sub", rd.Subreddit).
-			Set("date", rd.Created).
+			Set("date", int64(rd.Created)/86400).
 			Set("ups", rd.Ups)
 
 		ch <- doc
