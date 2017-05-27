@@ -31,6 +31,7 @@ type Field struct {
 type TextFieldOptions struct {
 	Weight   float32
 	Stemming bool
+	Sortable bool
 }
 
 // NewTextField creates a new text field with the given weight
@@ -39,8 +40,20 @@ func NewTextField(name string, weight float32) Field {
 		Name: name,
 		Type: TextField,
 		Options: TextFieldOptions{
-			Weight:   1.0,
+			Weight:   weight,
 			Stemming: true,
+		},
+	}
+}
+
+func NewTextFieldSortable(name string, weight float32) Field {
+	return Field{
+		Name: name,
+		Type: TextField,
+		Options: TextFieldOptions{
+			Weight:   weight,
+			Stemming: true,
+			Sortable: true,
 		},
 	}
 }

@@ -60,7 +60,7 @@ func (rr *RedditReader) Read(r io.Reader, ch chan index.Document) error {
 			Set("body", rd.Body).
 			Set("author", rd.Author).
 			Set("sub", rd.Subreddit).
-			Set("date", int64(rd.Created)/86400)
+			Set("date", int64(rd.Created))
 			//Set("ups", rd.Ups)
 
 		ch <- doc

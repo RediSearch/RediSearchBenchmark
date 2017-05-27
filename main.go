@@ -150,7 +150,7 @@ func main() {
 			}
 		} else if *dirName != "" {
 			ingest.ReadDir(*dirName, *fileMatch, wr, idx, nil, redisearch.IndexingOptions{},
-				1000, runtime.NumCPU(), 250)
+				1000, runtime.NumCPU(), 250, nil)
 
 		}
 

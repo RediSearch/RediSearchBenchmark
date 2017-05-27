@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strconv"
+	"sync"
 
 	"time"
 
@@ -35,6 +36,7 @@ type IndexingOptions struct {
 
 // Index is an interface to redisearch's redis connads
 type Index struct {
+	sync.Mutex
 	pools         map[string]*redis.Pool
 	hosts         []string
 	md            *index.Metadata
@@ -45,6 +47,8 @@ type Index struct {
 var maxConns = 500
 
 func (i *Index) getConn() redis.Conn {
+	i.Lock()
+	defer i.Unlock()
 	host := i.hosts[rand.Intn(len(i.hosts))]
 	pool, found := i.pools[host]
 	if !found {
@@ -108,6 +112,9 @@ func (i *Index) Create() error {
 				return errors.New("Invalid text field options type")
 			}
 			args = append(args, f.Name, "TEXT", "WEIGHT", opts.Weight)
+			if opts.Sortable {
+				args = append(args, "SORTABLE")
+			}
 
 			// stemming per field not supported yet
 
@@ -235,14 +242,19 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 
 	docs = make([]index.Document, 0, len(res)-1)
 
-	if len(res) > 3 {
-		for i := 1; i < len(res); i += 3 {
+	if len(res) > 2 {
+		for i := 1; i < len(res); i += 2 {
 
-			if i == 0 {
-				continue
+			var fields interface{} = []interface{}{}
+			if q.Flags&query.QueryNoContent == 0 {
+				fields = res[i+2]
+
 			}
-			if d, e := loadDocument(res[i], res[i+1], res[i+2]); e == nil {
+			if d, e := loadDocument(res[i], res[i+1], fields); e == nil {
 				docs = append(docs, d)
+			}
+			if q.Flags&query.QueryNoContent == 0 {
+				i++
 			}
 		}
 	}

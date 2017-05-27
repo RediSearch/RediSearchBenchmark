@@ -41,7 +41,7 @@ func (a *Autocompleter) AddTerms(terms ...index.Suggestion) error {
 
 	i := 0
 	for _, term := range terms {
-		if err := conn.Send("FT.SUGADD", a.name, term.Term, term.Score); err != nil {
+		if err := conn.Send("FT.SUGADD", a.name, term.Term, term.Score, "INCR"); err != nil {
 			return err
 		}
 		i++

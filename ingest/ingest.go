@@ -5,10 +5,13 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"sync"
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 )
@@ -47,9 +50,32 @@ func walkDir(path string, pattern string, ch chan string) {
 	}
 }
 
+type Stats struct {
+	TotalDocs             int64
+	CurrentWindowDocs     int
+	CurrentWindowDuration time.Duration
+	CurrentWindowRate     float64
+	CurrentWindowLatency  time.Duration
+}
+
+func ngrams(words []string, size int, count map[string]uint32) {
+
+	offset := int(math.Floor(float64(size / 2)))
+
+	max := len(words)
+	for i := range words {
+		if i < offset || i+size-offset > max {
+			continue
+		}
+		gram := strings.Join(words[i-offset:i+size-offset], " ")
+		count[gram] += uint32(size)
+	}
+
+}
+
 // ReadDir reads a complete directory and feeds each file it finds to a document reader
 func ReadDir(dirName string, pattern string, r DocumentReader, idx index.Index, ac index.Autocompleter,
-	opts interface{}, chunk int, workers int, conns int) {
+	opts interface{}, chunk int, workers int, conns int, stats chan Stats) {
 	filech := make(chan string, 100)
 	go func() {
 		defer close(filech)
@@ -57,19 +83,44 @@ func ReadDir(dirName string, pattern string, r DocumentReader, idx index.Index, 
 	}()
 
 	doch := make(chan index.Document, chunk)
-	countch := make(chan struct{}, chunk*workers)
+	countch := make(chan time.Duration, chunk*workers)
 	// start the independent idexing workers
-	for i := 0; i < conns; i++ {
-		go func(doch chan index.Document, countch chan struct{}) {
-			for doc := range doch {
-				if doc.Id != "" {
-					//fmt.Println(doc)
-					idx.Index([]index.Document{doc}, opts)
-					countch <- struct{}{}
+	wg := sync.WaitGroup{}
+	go func() {
+		for i := 0; i < conns; i++ {
+			wg.Add(1)
+			go func(doch chan index.Document, countch chan time.Duration) {
+				for doc := range doch {
+					if doc.Id != "" {
+						//fmt.Println(doc)
+						st := time.Now()
+						idx.Index([]index.Document{doc}, opts)
+						dur := time.Since(st)
+						countch <- dur
+
+						// words := strings.Fields(strings.ToLower(doc.Properties["body"].(string)))
+						// grams := map[string]uint32{}
+						// ngrams(words, 1, grams)
+						// ngrams(words, 2, grams)
+						// ngrams(words, 3, grams)
+						// suggestions := make(index.SuggestionList, 0, len(grams))
+						// for gr, count := range grams {
+						// 	suggestions = append(suggestions, index.Suggestion{Term: gr, Score: float64(count)})
+						// }
+						// suggestions.Sort()
+						// if len(suggestions) > 10 {
+						// 	suggestions = suggestions[:10]
+						// }
+						// ac.AddTerms(suggestions...)
+
+					}
 				}
-			}
-		}(doch, countch)
-	}
+				wg.Done()
+			}(doch, countch)
+
+		}
+		wg.Wait()
+	}()
 	// start the file reader workers
 	for i := 0; i < workers; i++ {
 		go func(filech chan string, doch chan index.Document) {
@@ -87,18 +138,33 @@ func ReadDir(dirName string, pattern string, r DocumentReader, idx index.Index, 
 		}(filech, doch)
 	}
 
-	n := 0
-	total := 0
+	stt := Stats{
+		CurrentWindowDocs:     0,
+		TotalDocs:             0,
+		CurrentWindowRate:     0,
+		CurrentWindowDuration: 0,
+		CurrentWindowLatency:  0,
+	}
+
 	st := time.Now()
-	for range countch {
-		n++
-		total++
-		if n == chunk {
-			rate := float32(n) / (float32(time.Since(st).Seconds()))
+	var totalLatency time.Duration
+	for rtt := range countch {
+		stt.TotalDocs++
+		stt.CurrentWindowDocs++
+		totalLatency += rtt
+
+		if time.Since(st) > 200*time.Millisecond {
+			stt.CurrentWindowDuration = time.Since(st)
+			stt.CurrentWindowRate = float64(stt.CurrentWindowDocs) / (float64(stt.CurrentWindowDuration.Seconds()))
+			stt.CurrentWindowLatency = totalLatency / (1 + time.Duration(stt.CurrentWindowDocs))
 			//dtrate := float32(dt) / (float32(time.Since(st).Seconds())) / float32(1024*1024)
-			fmt.Println(total, "docs done, rate: ", rate, "d/s")
+			fmt.Println(stt.TotalDocs, "docs done, avg latency:", stt.CurrentWindowLatency, " rate: ", stt.CurrentWindowRate, "d/s")
 			st = time.Now()
-			n = 0
+			if stats != nil {
+				stats <- stt
+			}
+			stt.CurrentWindowDocs = 0
+			totalLatency = 0
 
 		}
 	}
