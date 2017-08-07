@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"io"
+	"math"
 	"strings"
 
 	"compress/bzip2"
@@ -56,7 +57,7 @@ func (rr *RedditReader) Read(r io.Reader, ch chan index.Document) error {
 			log.Printf("Error decoding json: %s", err)
 			break
 		}
-		doc := index.NewDocument(rd.Id, float32(rd.Score)).
+		doc := index.NewDocument(rd.Id, float32(math.Max(0, float64(rd.Score)))/1000).
 			Set("body", rd.Body).
 			Set("author", rd.Author).
 			Set("sub", rd.Subreddit).
