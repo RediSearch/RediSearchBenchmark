@@ -231,6 +231,32 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 		args = append(args, "NOCONTENT")
 	}
 
+	if q.HighlightOpts != nil {
+		args = args.Add("HIGHLIGHT")
+		if q.HighlightOpts.Fields != nil && len(q.HighlightOpts.Fields) > 0 {
+			args = args.Add("FIELDS", len(q.HighlightOpts.Fields))
+			args = args.AddFlat(q.HighlightOpts.Fields)
+		}
+		args = args.Add("TAGS", q.HighlightOpts.Tags[0], q.HighlightOpts.Tags[1])
+	}
+
+	if q.SummarizeOpts != nil {
+		args = args.Add("SUMMARIZE")
+		if q.SummarizeOpts.Fields != nil && len(q.SummarizeOpts.Fields) > 0 {
+			args = args.Add("FIELDS", len(q.SummarizeOpts.Fields))
+			args = args.AddFlat(q.SummarizeOpts.Fields)
+		}
+		if q.SummarizeOpts.FragmentLen > 0 {
+			args = args.Add("LEN", q.SummarizeOpts.FragmentLen)
+		}
+		if q.SummarizeOpts.NumFragments > 0 {
+			args = args.Add("FRAGS", q.SummarizeOpts.NumFragments)
+		}
+		if q.SummarizeOpts.Separator != "" {
+			args = args.Add("SEPARATOR", q.SummarizeOpts.Separator)
+		}
+	}
+
 	res, err := redis.Values(conn.Do(i.commandPrefix+".SEARCH", args...))
 	if err != nil {
 		return
