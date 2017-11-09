@@ -72,10 +72,11 @@ func main() {
 	conc := flag.Int("c", 4, "benchmark concurrency")
 	qs := flag.String("queries", "hello world", "comma separated list of queries to benchmark")
 	outfile := flag.String("o", "benchmark.csv", "results output file. set to - for stdout")
-	duration := time.Second * time.Duration(*seconds)
 	cmdPrefix := flag.String("prefix", "FT", "Command prefix for FT module")
 
-	flag.Parse()
+	flag.Parse()	
+	duration := time.Second * time.Duration(*seconds)
+	
 	servers := strings.Split(*hosts, ",")
 	if len(servers) == 0 {
 		panic("No servers given")
