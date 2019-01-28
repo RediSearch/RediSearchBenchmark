@@ -86,10 +86,9 @@ func (r *WikipediaAbstractsReader) LoadScores(fileName string) error {
 	return nil
 }
 
-func (wr *WikipediaAbstractsReader) Read(r io.Reader) (<-chan index.Document, error) {
+func (wr *WikipediaAbstractsReader) Read(r io.Reader, ch chan index.Document)  error {
 
 	dec := xml.NewDecoder(r)
-	ch := make(chan index.Document, 1000)
 	go func() {
 
 		tok, err := dec.RawToken()
@@ -135,5 +134,5 @@ func (wr *WikipediaAbstractsReader) Read(r io.Reader) (<-chan index.Document, er
 		fmt.Println("error: ", err)
 		close(ch)
 	}()
-	return ch, nil
+	return nil
 }

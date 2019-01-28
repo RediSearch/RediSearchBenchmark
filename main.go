@@ -135,7 +135,7 @@ func main() {
 
 		idx.Drop()
 		idx.Create()
-		wr := &ingest.RedditReader{}
+		wr := &ingest.WikipediaAbstractsReader{}
 
 		// if *scoreFile != "" {
 		// 	if err := wr.LoadScores(*scoreFile); err != nil {
