@@ -1,3 +1,10 @@
+[![license](https://img.shields.io/github/license/RediSearch/RediSearchBenchmark.svg)](https://github.com/RediSearch/RediSearchBenchmark)
+<!--[![CircleCI](https://circleci.com/gh/RediSearch/RediSearchBenchmark/tree/master.svg?style=svg)](https://circleci.com/gh/RediSearch/RediSearchBenchmark/tree/master)
+[![GitHub issues](https://img.shields.io/github/release/RediSearch/RediSearchBenchmark.svg)](https://github.com/RediSearch/RediSearchBenchmark/releases/latest)
+[![Codecov](https://codecov.io/gh/RediSearch/RediSearchBenchmark/branch/master/graph/badge.svg)](https://codecov.io/gh/RediSearch/RediSearchBenchmark) -->
+[![GoDoc](https://godoc.org/github.com/RediSearch/RediSearchBenchmark?status.svg)](https://godoc.org/github.com/RediSearch/RediSearchBenchmark)
+
+
 # RediSearchBenchmarks
 
 Source code for benchmarking the RediSearch module, providing scalable high performance full-text search.
