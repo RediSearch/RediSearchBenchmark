@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
-	"github.com/RedisLabs/RediSearchBenchmark/query"
+	"github.com/RediSearch/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/query"
 	"gopkg.in/olivere/elastic.v6"
 	"context"
 	"fmt"

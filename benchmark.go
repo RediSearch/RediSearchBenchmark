@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
-	"github.com/RedisLabs/RediSearchBenchmark/query"
+	"github.com/RediSearch/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/query"
 )
 
 // SearchBenchmark returns a closure of a function for the benchmarker to run, using a given index

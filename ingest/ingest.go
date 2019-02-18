@@ -13,7 +13,7 @@ import (
 
 	"sync"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/index"
 )
 
 // DocumentReader implements parsing a data source and yielding documents

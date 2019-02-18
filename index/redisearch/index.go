@@ -9,8 +9,8 @@ import (
 
 	"time"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
-	"github.com/RedisLabs/RediSearchBenchmark/query"
+	"github.com/RediSearch/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/query"
 	"github.com/garyburd/redigo/redis"
 )
 

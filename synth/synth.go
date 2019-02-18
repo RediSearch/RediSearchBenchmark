@@ -9,7 +9,7 @@ import (
 
 	"time"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/index"
 )
 
 // DocumentGenerator generates synthetic documents for benchmarkig

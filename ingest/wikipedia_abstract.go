@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/index"
 )
 
 func filter(title, body string) bool {

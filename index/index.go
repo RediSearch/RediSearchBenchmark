@@ -1,7 +1,7 @@
 package index
 
 import (
-	"github.com/RedisLabs/RediSearchBenchmark/query"
+	"github.com/RediSearch/RediSearchBenchmark/query"
 )
 
 // Index is the abstract representation of a search index we're working against.

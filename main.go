@@ -9,13 +9,13 @@ import (
 
 	"runtime"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
-	"github.com/RedisLabs/RediSearchBenchmark/index/elastic"
-	"github.com/RedisLabs/RediSearchBenchmark/index/redisearch"
-	"github.com/RedisLabs/RediSearchBenchmark/index/solr"
-	"github.com/RedisLabs/RediSearchBenchmark/ingest"
-	"github.com/RedisLabs/RediSearchBenchmark/query"
-	"github.com/RedisLabs/RediSearchBenchmark/synth"
+	"github.com/RediSearch/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/index/elastic"
+	"github.com/RediSearch/RediSearchBenchmark/index/redisearch"
+	"github.com/RediSearch/RediSearchBenchmark/index/solr"
+	"github.com/RediSearch/RediSearchBenchmark/ingest"
+	"github.com/RediSearch/RediSearchBenchmark/query"
+	"github.com/RediSearch/RediSearchBenchmark/synth"
 )
 
 // IndexName is the name of our index on all engines

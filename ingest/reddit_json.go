@@ -12,7 +12,7 @@ import (
 
 	"strconv"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/index"
 )
 
 type timestamp int64

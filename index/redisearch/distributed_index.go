@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
-	"github.com/RedisLabs/RediSearchBenchmark/query"
+	"github.com/RediSearch/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/query"
 )
 
 // DistributedIndex is a redisearch index aggregator, working on several redisearch indexes at once,
