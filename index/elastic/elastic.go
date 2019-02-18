@@ -8,7 +8,9 @@ import (
 
 	"github.com/RedisLabs/RediSearchBenchmark/index"
 	"github.com/RedisLabs/RediSearchBenchmark/query"
-	"gopkg.in/olivere/elastic.v3"
+	"gopkg.in/olivere/elastic.v6"
+	"context"
+	"fmt"
 )
 
 // Index is an ElasticSearch index
@@ -27,7 +29,7 @@ func NewIndex(addr, name, typ string, md *index.Metadata) (*Index, error) {
 		Transport: &http.Transport{
 			MaxIdleConnsPerHost: 200,
 		},
-		Timeout: 250 * time.Millisecond,
+		Timeout: 1000 * time.Millisecond,
 	}
 	conn, err := elastic.NewClient(elastic.SetURL(addr), elastic.SetHttpClient(client))
 	if err != nil {
@@ -54,7 +56,7 @@ type mapping struct {
 func fieldTypeString(f index.FieldType) (string, error) {
 	switch f {
 	case index.TextField:
-		return "string", nil
+		return "text", nil
 	case index.NumericField:
 		return "double", nil
 	default:
@@ -76,21 +78,25 @@ func (i *Index) Create() error {
 	}
 
 	// we currently manually create the autocomplete mapping
-	ac := mapping{
-		Properties: map[string]mappingProperty{
-			"sugg": mappingProperty{
-				"type":     "completion",
-				"payloads": true,
-			},
-		},
-	}
+	// ac := mapping{
+	// 	Properties: map[string]mappingProperty{
+	// 		"sugg": mappingProperty{
+	// 			"type":     "completion",
+	// 			"payloads": true,
+	// 		},
+	// 	},
+	// }
 
 	mappings := map[string]mapping{
 		i.typ:          doc,
-		"autocomplete": ac,
+		// "autocomplete": ac,
 	}
 
-	_, err := i.conn.CreateIndex(i.name).BodyJson(map[string]interface{}{"mappings": mappings}).Do()
+	_, err := i.conn.CreateIndex(i.name).BodyJson(map[string]interface{}{"mappings": mappings}).Do(context.Background())
+
+	if err != nil {
+		panic(err)
+	}
 
 	return err
 }
@@ -105,7 +111,11 @@ func (i *Index) Index(docs []index.Document, opts interface{}) error {
 		blk.Add(req)
 
 	}
-	_, err := blk.Refresh(true).Do()
+	_, err := blk.Refresh("true").Do(context.Background())
+
+	if err != nil{
+		panic(err)
+	}
 
 	return err
 }
@@ -119,11 +129,13 @@ func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 		Query(eq).
 		From(q.Paging.Offset).
 		Size(q.Paging.Num).
-		Do()
+		Do(context.Background())
 
 	if err != nil {
-		return nil, 0, err
+		panic(err)
 	}
+
+	fmt.Printf("%v\r\n", res.TotalHits())
 
 	ret := make([]index.Document, 0, q.Paging.Num)
 	for _, h := range res.Hits.Hits {
@@ -142,7 +154,7 @@ func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 
 // Drop deletes the index
 func (i *Index) Drop() error {
-	i.conn.DeleteIndex(i.name).Do()
+	i.conn.DeleteIndex(i.name).Do(context.Background())
 
 	return nil
 }
@@ -158,7 +170,7 @@ func (i *Index) AddTerms(terms ...index.Suggestion) error {
 		blk.Add(req)
 
 	}
-	_, err := blk.Refresh(true).Do()
+	_, err := blk.Refresh("true").Do(context.Background())
 
 	return err
 
@@ -168,28 +180,28 @@ func (i *Index) AddTerms(terms ...index.Suggestion) error {
 // TODO: fuzzy not supported yet
 func (i *Index) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion, error) {
 
-	s := elastic.NewCompletionSuggester("autocomplete").Field("sugg").Text(prefix).Size(num)
+	// s := elastic.NewCompletionSuggester("autocomplete").Field("sugg").Text(prefix).Size(num)
 
-	res, err := i.conn.Suggest(i.name).Suggester(s).Do()
-	if err != nil {
-		return nil, err
-	}
+	// res, err := i.conn.Suggest(i.name).Suggester(s).Do(context.Background())
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	if suggs, found := res["autocomplete"]; found {
-		if len(suggs) > 0 {
-			opts := suggs[0].Options
+	// if suggs, found := res["autocomplete"]; found {
+	// 	if len(suggs) > 0 {
+	// 		opts := suggs[0].Options
 
-			ret := make([]index.Suggestion, 0, len(opts))
-			for _, op := range opts {
-				ret = append(ret, index.Suggestion{Term: op.Text, Score: float64(op.Score)})
-			}
-			return ret, nil
-		}
+	// 		ret := make([]index.Suggestion, 0, len(opts))
+	// 		for _, op := range opts {
+	// 			ret = append(ret, index.Suggestion{Term: op.Text, Score: float64(op.Score)})
+	// 		}
+	// 		return ret, nil
+	// 	}
 
-	}
+	// }
 
 	//ret := make([]index.Suggestion, res.)
-	return nil, err
+	return nil, nil
 
 }
 

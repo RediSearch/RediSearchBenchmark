@@ -40,6 +40,7 @@ func selectIndex(engine string, hosts []string, partitions int, cmdPrefix string
 		return idx, ac, query.QueryVerbatim
 
 	case "elastic":
+		fmt.Printf("%s\r\n", hosts[0])
 		idx, err := elastic.NewIndex(hosts[0], IndexName, "doc", indexMetadata)
 		if err != nil {
 			panic(err)
