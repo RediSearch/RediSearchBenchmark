@@ -39,6 +39,7 @@ type Index struct {
 	sync.Mutex
 	pools         map[string]*redis.Pool
 	hosts         []string
+	password      string
 	md            *index.Metadata
 	name          string
 	commandPrefix string
@@ -54,7 +55,12 @@ func (i *Index) getConn() redis.Conn {
 	if !found {
 		pool = redis.NewPool(func() (redis.Conn, error) {
 			// TODO: Add timeouts. and 2 separate pools for indexing and querying, with different timeouts
-			return redis.Dial("tcp", host)
+			if i.password != ""{
+				return redis.Dial("tcp", host, redis.DialPassword(i.password))	
+			}else{
+				return redis.Dial("tcp", host)	
+			}
+			
 		}, maxConns)
 		pool.TestOnBorrow = func(c redis.Conn, t time.Time) error {
 			if time.Since(t).Seconds() > 3 {
@@ -71,7 +77,7 @@ func (i *Index) getConn() redis.Conn {
 }
 
 // NewIndex creates a new index connecting to the redis host, and using the given name as key prefix
-func NewIndex(addrs []string, name string, md *index.Metadata) *Index {
+func NewIndex(addrs []string, pass string, name string, md *index.Metadata) *Index {
 
 	ret := &Index{
 
@@ -79,6 +85,7 @@ func NewIndex(addrs []string, name string, md *index.Metadata) *Index {
 		hosts: addrs,
 
 		md: md,
+		password: pass,
 
 		name: name,
 
@@ -259,11 +266,11 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 
 	res, err := redis.Values(conn.Do(i.commandPrefix+".SEARCH", args...))
 	if err != nil {
-		return
+		return nil, 0, err
 	}
 
 	if total, err = redis.Int(res[0], nil); err != nil {
-		return
+		return nil, 0, err
 	}
 
 	docs = make([]index.Document, 0, len(res)-1)
@@ -284,7 +291,7 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 			}
 		}
 	}
-	return
+	return nil, len(res), nil
 }
 
 // Drop the index. Currentl just flushes the DB - note that this will delete EVERYTHING on the redis instance

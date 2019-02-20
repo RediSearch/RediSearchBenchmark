@@ -29,13 +29,13 @@ var indexMetadata = index.NewMetadata().
 	//AddField(index.NewNumericField("ups"))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
-func selectIndex(engine string, hosts []string, partitions int, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
+func selectIndex(engine string, hosts []string, pass string, partitions int, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
 	case "redis":
 		indexMetadata.Options = redisearch.IndexingOptions{Prefix: cmdPrefix}
 		//return redisearch.NewIndex(hosts[0], "wik{0}", indexMetadata)
-		idx := redisearch.NewIndex(hosts, IndexName, indexMetadata)
+		idx := redisearch.NewIndex(hosts, pass, IndexName, indexMetadata)
 		ac := redisearch.NewAutocompleter(hosts[0], "ac")
 		return idx, ac, query.QueryVerbatim
 
@@ -76,6 +76,7 @@ func main() {
 	outfile := flag.String("o", "benchmark.csv", "results output file. set to - for stdout")
 	duration := time.Second * time.Duration(*seconds)
 	cmdPrefix := flag.String("prefix", "FT", "Command prefix for FT module")
+	password := flag.String("password", "", "redis database password")
 
 	flag.Parse()
 	servers := strings.Split(*hosts, ",")
@@ -85,7 +86,7 @@ func main() {
 	queries := strings.Split(*qs, ",")
 
 	// select index to run
-	idx, ac, opts := selectIndex(*engine, servers, *partitions, *cmdPrefix)
+	idx, ac, opts := selectIndex(*engine, servers, *password, *partitions, *cmdPrefix)
 
 	// Search benchmark
 	if *benchmark == "search" {
@@ -103,7 +104,10 @@ func main() {
 	// ingest random documents
 	if *random > 0 {
 		idx.Drop()
-		idx.Create()
+		err := idx.Create()
+		if err != nil{
+			panic(err)
+		}
 
 		N := 1000
 		gen := synth.NewDocumentGenerator(*random, map[string][2]int{"title": {5, 10}, "body": {10, 20}})
@@ -135,7 +139,10 @@ func main() {
 		}
 
 		idx.Drop()
-		idx.Create()
+		err := idx.Create()
+		if err != nil{
+			panic(err)
+		}
 		wr := &ingest.WikipediaAbstractsReader{}
 
 		// if *scoreFile != "" {

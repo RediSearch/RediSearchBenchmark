@@ -21,7 +21,7 @@ type DistributedIndex struct {
 }
 
 // NewDistributedIndex creates a distributed index on the given redis hosts, creating sub indexes per the given number of partitions
-func NewDistributedIndex(name string, hosts []string, partitions int, md *index.Metadata) *DistributedIndex {
+func NewDistributedIndex(name string, pass string, hosts []string, partitions int, md *index.Metadata) *DistributedIndex {
 
 	part := ModuloPartitioner{partitions}
 
@@ -30,7 +30,7 @@ func NewDistributedIndex(name string, hosts []string, partitions int, md *index.
 
 	for i := 0; i < partitions; i++ {
 		addr := hosts[i%len(hosts)]
-		subs = append(subs, NewIndex([]string{addr}, fmt.Sprintf("%s{%d}", name, i), md))
+		subs = append(subs, NewIndex([]string{addr}, pass, fmt.Sprintf("%s{%d}", name, i), md))
 		completers = append(completers, NewAutocompleter(addr, fmt.Sprintf("%s.autocomplete{%d}", name, i)))
 	}
 
