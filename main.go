@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"strconv"
 
 	"runtime"
 
@@ -19,35 +20,33 @@ import (
 )
 
 // IndexName is the name of our index on all engines
-const IndexName = "rd"
+const IndexNamePrefix = "rd"
 
 var indexMetadata = index.NewMetadata().
 	AddField(index.NewTextField("body", 1)).
-	AddField(index.NewTextField("author", 5)).
-	AddField(index.NewTextField("sub", 5)).
-	AddField(index.NewNumericField("date"))
+	AddField(index.NewTextField("title", 5)).
+	AddField(index.NewTextField("url", 5))
 	//AddField(index.NewNumericField("ups"))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
-func selectIndex(engine string, hosts []string, pass string, partitions int, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
+func selectIndex(engine string, hosts []string, pass string, temporary int, name string, partitions int, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
 	case "redis":
 		indexMetadata.Options = redisearch.IndexingOptions{Prefix: cmdPrefix}
 		//return redisearch.NewIndex(hosts[0], "wik{0}", indexMetadata)
-		idx := redisearch.NewIndex(hosts, pass, IndexName, indexMetadata)
+		idx := redisearch.NewIndex(hosts, pass, temporary, name, indexMetadata)
 		ac := redisearch.NewAutocompleter(hosts[0], "ac")
 		return idx, ac, query.QueryVerbatim
 
 	case "elastic":
-		fmt.Printf("%s\r\n", hosts[0])
-		idx, err := elastic.NewIndex(hosts[0], IndexName, "doc", indexMetadata)
+		idx, err := elastic.NewIndex(hosts[0], name, "doc", indexMetadata)
 		if err != nil {
 			panic(err)
 		}
 		return idx, idx, 0
 	case "solr":
-		idx, err := solr.NewIndex(hosts[0], IndexName, indexMetadata)
+		idx, err := solr.NewIndex(hosts[0], name, indexMetadata)
 		if err != nil {
 			panic(err)
 		}
@@ -69,9 +68,12 @@ func main() {
 	engine := flag.String("engine", "redis", "The search backend to run")
 	benchmark := flag.String("benchmark", "", "[search|suggest] - if set, we run the given benchmark")
 	random := flag.Int("random", 0, "Generate random documents with terms like term0..term{N}")
-	fuzzy := flag.Bool("fuzzy", false, "For redis only - benchmark fuzzy auto suggest")
+	indexesAmount := flag.Int("indexes", 1, "number of indexes to generate")
+	// fuzzy := flag.Bool("fuzzy", false, "For redis only - benchmark fuzzy auto suggest")
 	seconds := flag.Int("duration", 5, "number of seconds to run the benchmark")
+	temporary := flag.Int("temporary", -1, "for redisearch only, create a temporary index that will expire after the given amount of seconds, -1 mean no temporary")
 	conc := flag.Int("c", 4, "benchmark concurrency")
+	maxDocPerIndex := flag.Int("maxdocs", -1, "specify the numebr of max docs per index, -1 for no limit")
 	qs := flag.String("queries", "hello world", "comma separated list of queries to benchmark")
 	outfile := flag.String("o", "benchmark.csv", "results output file. set to - for stdout")
 	duration := time.Second * time.Duration(*seconds)
@@ -85,26 +87,39 @@ func main() {
 	}
 	queries := strings.Split(*qs, ",")
 
+	indexes := make([]index.Index, *indexesAmount)
+	var opts interface{}
+	if *engine == "redis"{
+		opts = query.QueryVerbatim
+	}
 	// select index to run
-	idx, ac, opts := selectIndex(*engine, servers, *password, *partitions, *cmdPrefix)
+	for i := 0; i < *indexesAmount; i++ {
+		name := IndexNamePrefix + strconv.Itoa(i)
+		idx, _, _ := selectIndex(*engine, servers, *password, *temporary, name, *partitions, *cmdPrefix)
+		indexes[i] = idx
+	}
 
 	// Search benchmark
 	if *benchmark == "search" {
+		if(*indexesAmount > 1){
+			panic("search not supported on multiple indexes!!!")
+		}
 		name := fmt.Sprintf("search: %s", *qs)
-		Benchmark(*conc, duration, *engine, name, *outfile, SearchBenchmark(queries, idx, opts))
+		Benchmark(*conc, duration, *engine, name, *outfile, SearchBenchmark(queries, indexes[0], opts))
 		os.Exit(0)
 	}
 
 	// Auto-suggest benchmark
 	if *benchmark == "suggest" {
-		Benchmark(*conc, duration, *engine, "suggest", *outfile, AutocompleteBenchmark(ac, *fuzzy))
-		os.Exit(0)
+		panic("not supported!!")
+		// Benchmark(*conc, duration, *engine, "suggest", *outfile, AutocompleteBenchmark(ac, *fuzzy))
+		// os.Exit(0)
 	}
 
 	// ingest random documents
 	if *random > 0 {
-		idx.Drop()
-		err := idx.Create()
+		indexes[0].Drop()
+		err := indexes[0].Create()
 		if err != nil{
 			panic(err)
 		}
@@ -115,7 +130,7 @@ func main() {
 		n := 0
 		ch := make(chan index.Document, N)
 		go func() {
-			for {
+			for i :=0 ; i < *maxDocPerIndex || *maxDocPerIndex == -1 ; i++{
 				ch <- gen.Generate(0)
 			}
 		}()
@@ -127,41 +142,43 @@ func main() {
 				n++
 			}
 
-			idx.Index(chunk, nil)
+			indexes[0].Index(chunk, nil)
 			fmt.Println(n)
 		}
 
 	}
 	// ingest documents into the selected engine
 	if (*fileName != "" || *dirName != "") && *benchmark == "" {
-		if ac != nil {
-			ac.Delete()
-		}
-
-		idx.Drop()
-		err := idx.Create()
-		if err != nil{
-			panic(err)
-		}
-		wr := &ingest.WikipediaAbstractsReader{}
-
-		// if *scoreFile != "" {
-		// 	if err := wr.LoadScores(*scoreFile); err != nil {
-		// 		panic(err)
-		// 	}
+		// if ac != nil {
+		// 	ac.Delete()
 		// }
 
-		if *fileName != "" {
+		for _,index := range indexes{
 
-			if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, 1000); err != nil {
+			index.Drop()
+			err := index.Create()
+			if err != nil{
 				panic(err)
 			}
-		} else if *dirName != "" {
-			ingest.ReadDir(*dirName, *fileMatch, wr, idx, nil, redisearch.IndexingOptions{},
-				1000, runtime.NumCPU(), 250, nil)
+			wr := &ingest.WikipediaAbstractsReader{}
 
+			// if *scoreFile != "" {
+			// 	if err := wr.LoadScores(*scoreFile); err != nil {
+			// 		panic(err)
+			// 	}
+			// }
+
+			if *fileName != "" {
+
+				if err := ingest.ReadFile(*fileName, wr, index, nil, redisearch.IndexingOptions{}, 1000, *maxDocPerIndex); err != nil {
+					panic(err)
+				}
+			} else if *dirName != "" {
+				ingest.ReadDir(*dirName, *fileMatch, wr, index, nil, redisearch.IndexingOptions{},
+					1000, runtime.NumCPU(), 250, nil, *maxDocPerIndex)
+
+			}
 		}
-
 		os.Exit(0)
 	}
 

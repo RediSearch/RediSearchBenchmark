@@ -30,7 +30,7 @@ func NewDistributedIndex(name string, pass string, hosts []string, partitions in
 
 	for i := 0; i < partitions; i++ {
 		addr := hosts[i%len(hosts)]
-		subs = append(subs, NewIndex([]string{addr}, pass, fmt.Sprintf("%s{%d}", name, i), md))
+		subs = append(subs, NewIndex([]string{addr}, pass, -1, fmt.Sprintf("%s{%d}", name, i), md))
 		completers = append(completers, NewAutocompleter(addr, fmt.Sprintf("%s.autocomplete{%d}", name, i)))
 	}
 

@@ -94,6 +94,10 @@ func (i *Index) Drop() error {
 
 }
 
+func (i *Index) GetName() string {
+	return i.name
+}
+
 // Create creates the index on Solr
 func (i *Index) Create() error {
 

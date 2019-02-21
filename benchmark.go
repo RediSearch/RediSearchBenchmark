@@ -20,7 +20,7 @@ func SearchBenchmark(queries []string, idx index.Index, opts interface{}) func()
 
 	counter := 0
 	return func() error {
-		q := query.NewQuery(IndexName, queries[counter%len(queries)]).Limit(0, 5)
+		q := query.NewQuery(idx.GetName(), queries[counter%len(queries)]).Limit(0, 5)
 		_, _, err := idx.Search(*q)
 		counter++
 		return err

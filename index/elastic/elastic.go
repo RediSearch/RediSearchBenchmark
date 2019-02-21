@@ -10,7 +10,6 @@ import (
 	"github.com/RediSearch/RediSearchBenchmark/query"
 	"gopkg.in/olivere/elastic.v6"
 	"context"
-	"fmt"
 )
 
 // Index is an ElasticSearch index
@@ -22,19 +21,24 @@ type Index struct {
 	typ  string
 }
 
+var conn *elastic.Client = nil
+
 // NewIndex creates a new elasticSearch index with the given address and name. typ is the entity type
 func NewIndex(addr, name, typ string, md *index.Metadata) (*Index, error) {
-
-	client := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConnsPerHost: 200,
-		},
-		Timeout: 1000 * time.Millisecond,
+	var err error
+	if conn == nil{
+		client := &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConnsPerHost: 200,
+			},
+			Timeout: 2000 * time.Millisecond,
+		}
+		conn, err = elastic.NewClient(elastic.SetURL(addr), elastic.SetHttpClient(client))
+		if err != nil {
+			return nil, err
+		}
 	}
-	conn, err := elastic.NewClient(elastic.SetURL(addr), elastic.SetHttpClient(client))
-	if err != nil {
-		return nil, err
-	}
+	
 	ret := &Index{
 		conn: conn,
 		md:   md,
@@ -64,6 +68,10 @@ func fieldTypeString(f index.FieldType) (string, error) {
 	}
 }
 
+func (i *Index) GetName() string {
+	return i.name
+}
+
 // Create creates the index and posts a mapping corresponding to our Metadata
 func (i *Index) Create() error {
 
@@ -85,7 +93,7 @@ func (i *Index) Create() error {
 	// 			"payloads": true,
 	// 		},
 	// 	},
-	// }
+	// }	
 
 	mappings := map[string]mapping{
 		i.typ:          doc,
@@ -134,8 +142,6 @@ func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 	if err != nil {
 		panic(err)
 	}
-
-	fmt.Printf("%v\r\n", res.TotalHits())
 
 	ret := make([]index.Document, 0, q.Paging.Num)
 	for _, h := range res.Hits.Hits {

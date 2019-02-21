@@ -86,11 +86,11 @@ func (r *WikipediaAbstractsReader) LoadScores(fileName string) error {
 	return nil
 }
 
-func (wr *WikipediaAbstractsReader) Read(r io.Reader, ch chan index.Document)  error {
+func (wr *WikipediaAbstractsReader) Read(r io.Reader, ch chan index.Document, maxDocsToRead int)  error {
 
 	dec := xml.NewDecoder(r)
 	go func() {
-
+		docsRead := 1
 		tok, err := dec.RawToken()
 
 		props := map[string]string{}
@@ -122,16 +122,19 @@ func (wr *WikipediaAbstractsReader) Read(r io.Reader, ch chan index.Document)  e
 								Set("url", strings.TrimSpace(props["url"]))
 								//Set("score", rand.Int31n(50000))
 							ch <- doc
+							docsRead++
 						}
 					}
 					props = map[string]string{}
 				}
 				currentText = ""
 			}
+			if maxDocsToRead != -1 && docsRead >= maxDocsToRead{
+				break
+			} 
 			tok, err = dec.RawToken()
 
 		}
-		fmt.Println("error: ", err)
 		close(ch)
 	}()
 	return nil

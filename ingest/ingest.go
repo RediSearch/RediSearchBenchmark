@@ -18,7 +18,7 @@ import (
 
 // DocumentReader implements parsing a data source and yielding documents
 type DocumentReader interface {
-	Read(io.Reader, chan index.Document) error
+	Read(io.Reader, chan index.Document, int) error
 }
 
 func walkDir(path string, pattern string, ch chan string) {
@@ -75,7 +75,7 @@ func ngrams(words []string, size int, count map[string]uint32) {
 
 // ReadDir reads a complete directory and feeds each file it finds to a document reader
 func ReadDir(dirName string, pattern string, r DocumentReader, idx index.Index, ac index.Autocompleter,
-	opts interface{}, chunk int, workers int, conns int, stats chan Stats) {
+	opts interface{}, chunk int, workers int, conns int, stats chan Stats, maxDocsToRead int) {
 	filech := make(chan string, 100)
 	go func() {
 		defer close(filech)
@@ -129,7 +129,7 @@ func ReadDir(dirName string, pattern string, r DocumentReader, idx index.Index, 
 				if err != nil {
 					log.Println(err)
 				} else {
-					if err = r.Read(fp, doch); err != nil {
+					if err = r.Read(fp, doch, maxDocsToRead); err != nil {
 						log.Printf("Error reading %s: %s", file, err)
 					}
 				}
@@ -173,7 +173,9 @@ func ReadDir(dirName string, pattern string, r DocumentReader, idx index.Index, 
 
 // IngestDocuments ingests documents into an index using a DocumentReader
 func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autocompleter,
-	opts interface{}, chunk int) error {
+	opts interface{}, chunk int, maxDocsToRead int) error {
+
+	var wg sync.WaitGroup
 
 	// open the file
 	fp, err := os.Open(fileName)
@@ -183,11 +185,10 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 	defer fp.Close()
 	ch := make(chan index.Document, chunk)
 	// run the reader and let it spawn a goroutine
-	if err := r.Read(fp, ch); err != nil {
+	if err := r.Read(fp, ch, maxDocsToRead); err != nil {
 		return err
 	}
 
-	docs := make([]index.Document, chunk*2)
 	terms := make([]index.Suggestion, chunk*2)
 
 	//freqs := map[string]int{}
@@ -200,10 +201,11 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 	totalDt := 0
 	doch := make(chan index.Document, 100)
 	for w := 0; w < 200; w++ {
+		wg.Add(1)
 		go func(doch chan index.Document) {
+			defer wg.Done()
 			for doc := range doch {
 				if doc.Id != "" {
-					//fmt.Println(doc)
 					idx.Index([]index.Document{doc}, opts)
 				}
 			}
@@ -275,9 +277,8 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 		}
 	}
 
-	if i%chunk != 0 {
-		go idx.Index(docs[:i%chunk], opts)
-		return nil
-	}
+	close(doch)
+
+	wg.Wait()
 	return nil
 }
