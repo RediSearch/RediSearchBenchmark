@@ -29,7 +29,7 @@ var indexMetadata = index.NewMetadata().
 	//AddField(index.NewNumericField("ups"))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
-func selectIndex(engine string, hosts []string, pass string, temporary int, name string, partitions int, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
+func selectIndex(engine string, hosts []string, pass string, temporary int, disableCache bool, name string, partitions int, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
 	case "redis":
@@ -40,7 +40,7 @@ func selectIndex(engine string, hosts []string, pass string, temporary int, name
 		return idx, ac, query.QueryVerbatim
 
 	case "elastic":
-		idx, err := elastic.NewIndex(hosts[0], name, "doc", indexMetadata)
+		idx, err := elastic.NewIndex(hosts[0], name, "doc", disableCache, indexMetadata)
 		if err != nil {
 			panic(err)
 		}
@@ -70,6 +70,7 @@ func main() {
 	random := flag.Int("random", 0, "Generate random documents with terms like term0..term{N}")
 	indexesAmount := flag.Int("indexes", 1, "number of indexes to generate")
 	// fuzzy := flag.Bool("fuzzy", false, "For redis only - benchmark fuzzy auto suggest")
+	disableCache := flag.Bool("disableCache", false, "for elastic only, disabling query cache")
 	seconds := flag.Int("duration", 5, "number of seconds to run the benchmark")
 	temporary := flag.Int("temporary", -1, "for redisearch only, create a temporary index that will expire after the given amount of seconds, -1 mean no temporary")
 	conc := flag.Int("c", 4, "benchmark concurrency")
@@ -95,7 +96,7 @@ func main() {
 	// select index to run
 	for i := 0; i < *indexesAmount; i++ {
 		name := IndexNamePrefix + strconv.Itoa(i)
-		idx, _, _ := selectIndex(*engine, servers, *password, *temporary, name, *partitions, *cmdPrefix)
+		idx, _, _ := selectIndex(*engine, servers, *password, *temporary, *disableCache, name, *partitions, *cmdPrefix)
 		indexes[i] = idx
 	}
 

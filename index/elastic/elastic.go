@@ -19,12 +19,13 @@ type Index struct {
 	md   *index.Metadata
 	name string
 	typ  string
+	disableCache bool
 }
 
 var conn *elastic.Client = nil
 
 // NewIndex creates a new elasticSearch index with the given address and name. typ is the entity type
-func NewIndex(addr, name, typ string, md *index.Metadata) (*Index, error) {
+func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata) (*Index, error) {
 	var err error
 	if conn == nil{
 		client := &http.Client{
@@ -44,6 +45,7 @@ func NewIndex(addr, name, typ string, md *index.Metadata) (*Index, error) {
 		md:   md,
 		name: name,
 		typ:  typ,
+		disableCache: disableCache,
 	}
 
 	return ret, nil
@@ -100,7 +102,12 @@ func (i *Index) Create() error {
 		// "autocomplete": ac,
 	}
 
-	_, err := i.conn.CreateIndex(i.name).BodyJson(map[string]interface{}{"mappings": mappings}).Do(context.Background())
+	settings := map[string]interface{}{
+		"index.requests.cache.enable": !i.disableCache,
+		// "autocomplete": ac,
+	}
+
+	_, err := i.conn.CreateIndex(i.name).BodyJson(map[string]interface{}{"mappings": mappings, "settings": settings}).Do(context.Background())
 
 	if err != nil {
 		panic(err)
