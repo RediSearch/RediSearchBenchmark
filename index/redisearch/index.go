@@ -282,7 +282,7 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 		}
 	}
 
-	for r := 0; r < 100 ; r += 1{
+	for r := 0; r < 1 ; r += 1{
 		if err := conn.Send(i.commandPrefix+".SEARCH", args...); err != nil {
 			panic(err)
 		}
@@ -292,7 +292,7 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 		panic(err)
 	}
 
-	for r := 0; r < 100 ; r += 1{
+	for r := 0; r < 1 ; r += 1{
 		if _, err := conn.Receive(); err != nil {
 			panic(err)
 		}

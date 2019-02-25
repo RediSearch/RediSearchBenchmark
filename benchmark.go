@@ -80,7 +80,7 @@ func Benchmark(concurrency int, duration time.Duration, engine, title string, ou
 				}
 
 				// update the total requests performed and total time
-				atomic.AddUint64(&total, 100)
+				atomic.AddUint64(&total, 1)
 				atomic.AddUint64(&totalTime, uint64(time.Since(tst)))
 
 			}
