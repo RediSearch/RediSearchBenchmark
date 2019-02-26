@@ -18,7 +18,7 @@ import (
 
 // DocumentReader implements parsing a data source and yielding documents
 type DocumentReader interface {
-	Read(io.Reader, chan index.Document, int) error
+	Read(io.Reader, chan index.Document, int, index.Index) error
 }
 
 func walkDir(path string, pattern string, ch chan string) {
@@ -129,7 +129,7 @@ func ReadDir(dirName string, pattern string, r DocumentReader, idx index.Index, 
 				if err != nil {
 					log.Println(err)
 				} else {
-					if err = r.Read(fp, doch, maxDocsToRead); err != nil {
+					if err = r.Read(fp, doch, maxDocsToRead, idx); err != nil {
 						log.Printf("Error reading %s: %s", file, err)
 					}
 				}
@@ -185,7 +185,7 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 	defer fp.Close()
 	ch := make(chan index.Document, chunk)
 	// run the reader and let it spawn a goroutine
-	if err := r.Read(fp, ch, maxDocsToRead); err != nil {
+	if err := r.Read(fp, ch, maxDocsToRead, idx); err != nil {
 		return err
 	}
 

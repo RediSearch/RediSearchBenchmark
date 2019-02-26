@@ -86,7 +86,7 @@ func (r *WikipediaAbstractsReader) LoadScores(fileName string) error {
 	return nil
 }
 
-func (wr *WikipediaAbstractsReader) Read(r io.Reader, ch chan index.Document, maxDocsToRead int)  error {
+func (wr *WikipediaAbstractsReader) Read(r io.Reader, ch chan index.Document, maxDocsToRead int, idx index.Index)  error {
 
 	dec := xml.NewDecoder(r)
 	go func() {
@@ -110,7 +110,7 @@ func (wr *WikipediaAbstractsReader) Read(r io.Reader, ch chan index.Document, ma
 					props[name] = currentText
 				} else if name == "doc" {
 
-					id := path.Base(props["url"])
+					id := idx.GetName() + "-" + path.Base(props["url"])
 					if len(id) > 0 {
 						title := strings.TrimPrefix(strings.TrimSpace(props["title"]), "Wikipedia: ")
 						body := strings.TrimSpace(props["abstract"])
