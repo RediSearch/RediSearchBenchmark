@@ -213,11 +213,12 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 				}else{
 					fmt.Println("warning empty id")
 				}
-				if(len(docs) > 100){
+				if(len(docs) > 1000){
 					idx.Index(docs, opts)
 					docs = []index.Document{}
 				}
 			}
+			idx.Index(docs, opts)
 			fmt.Println(numOfDocs)
 		}(doch)
 	}
