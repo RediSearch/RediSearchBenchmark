@@ -199,18 +199,29 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 	n := 0
 	dt := 0
 	totalDt := 0
-	doch := make(chan index.Document, 100)
-	for w := 0; w < 200; w++ {
+	doch := make(chan index.Document, 1)
+	for w := 0; w < 1; w++ {
 		wg.Add(1)
 		go func(doch chan index.Document) {
 			defer wg.Done()
+			docs := []index.Document{}
+			numOfDocs := 0
 			for doc := range doch {
 				if doc.Id != "" {
-					idx.Index([]index.Document{doc}, opts)
+					docs = append(docs, doc)
+					numOfDocs++;
+				}else{
+					fmt.Println("warning empty id")
+				}
+				if(len(docs) > 100){
+					idx.Index(docs, opts)
+					docs = []index.Document{}
 				}
 			}
+			fmt.Println(numOfDocs)
 		}(doch)
 	}
+	count := 0
 	for doc := range ch {
 
 		//docs[i%chunk] = doc
@@ -258,6 +269,7 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 		i++
 		n++
 		doch <- doc
+		count++
 		// if i%chunk == 0 {
 		// 	//var _docs []index.Document
 		// 	for _, d := range docs {
@@ -280,5 +292,7 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 	close(doch)
 
 	wg.Wait()
+	fmt.Println("number of docs:", count)
+
 	return nil
 }

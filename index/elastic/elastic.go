@@ -120,7 +120,6 @@ func (i *Index) Create() error {
 func (i *Index) Index(docs []index.Document, opts interface{}) error {
 
 	blk := i.conn.Bulk()
-
 	for _, doc := range docs {
 		req := elastic.NewBulkIndexRequest().Index(i.name).Type("doc").Id(doc.Id).Doc(doc.Properties)
 		blk.Add(req)

@@ -10,6 +10,7 @@ import (
 
 	"runtime"
 
+
 	"github.com/RediSearch/RediSearchBenchmark/index"
 	"github.com/RediSearch/RediSearchBenchmark/index/elastic"
 	"github.com/RediSearch/RediSearchBenchmark/index/redisearch"
@@ -153,11 +154,9 @@ func main() {
 		// if ac != nil {
 		// 	ac.Delete()
 		// }
-
-		for _,index := range indexes{
-
-			index.Drop()
-			err := index.Create()
+		for _,idx := range indexes{
+			idx.Drop()
+			err := idx.Create()
 			if err != nil{
 				panic(err)
 			}
@@ -171,11 +170,11 @@ func main() {
 
 			if *fileName != "" {
 
-				if err := ingest.ReadFile(*fileName, wr, index, nil, redisearch.IndexingOptions{}, 1000, *maxDocPerIndex); err != nil {
+				if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, 1000, *maxDocPerIndex); err != nil {
 					panic(err)
 				}
 			} else if *dirName != "" {
-				ingest.ReadDir(*dirName, *fileMatch, wr, index, nil, redisearch.IndexingOptions{},
+				ingest.ReadDir(*dirName, *fileMatch, wr, idx, nil, redisearch.IndexingOptions{},
 					1000, runtime.NumCPU(), 250, nil, *maxDocPerIndex)
 
 			}
