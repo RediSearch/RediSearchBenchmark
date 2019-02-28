@@ -10,6 +10,8 @@ import (
 
 	"runtime"
 
+	"sync"
+
 
 	"github.com/RediSearch/RediSearchBenchmark/index"
 	"github.com/RediSearch/RediSearchBenchmark/index/elastic"
@@ -154,31 +156,44 @@ func main() {
 		// if ac != nil {
 		// 	ac.Delete()
 		// }
-		for _,idx := range indexes{
-			idx.Drop()
-			err := idx.Create()
-			if err != nil{
-				panic(err)
-			}
-			wr := &ingest.WikipediaAbstractsReader{}
 
-			// if *scoreFile != "" {
-			// 	if err := wr.LoadScores(*scoreFile); err != nil {
-			// 		panic(err)
-			// 	}
-			// }
+		var wg sync.WaitGroup
+		idxChan := make(chan index.Index, 1)
+		for i := 0 ; i < 200 ; i++{
+			wg.Add(1)
+			go func(idxChan chan index.Index){
+				for idx := range idxChan{
+					idx.Drop()
+					err := idx.Create()
+					if err != nil{
+						panic(err)
+					}
+					wr := &ingest.WikipediaAbstractsReader{}
 
-			if *fileName != "" {
+					// if *scoreFile != "" {
+					// 	if err := wr.LoadScores(*scoreFile); err != nil {
+					// 		panic(err)
+					// 	}
+					// }
 
-				if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, 1000, *maxDocPerIndex); err != nil {
-					panic(err)
+					if *fileName != "" {
+
+						if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, 1000, *maxDocPerIndex); err != nil {
+							panic(err)
+						}
+					} else if *dirName != "" {
+						ingest.ReadDir(*dirName, *fileMatch, wr, idx, nil, redisearch.IndexingOptions{},
+							1000, runtime.NumCPU(), 250, nil, *maxDocPerIndex)
+
+					}
 				}
-			} else if *dirName != "" {
-				ingest.ReadDir(*dirName, *fileMatch, wr, idx, nil, redisearch.IndexingOptions{},
-					1000, runtime.NumCPU(), 250, nil, *maxDocPerIndex)
-
-			}
+			}(idxChan)
 		}
+
+		for _,idx := range indexes{
+			idxChan <- idx
+		}
+		wg.Wait()
 		os.Exit(0)
 	}
 

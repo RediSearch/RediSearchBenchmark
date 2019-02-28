@@ -157,7 +157,6 @@ func (i *Index) Create() error {
 
 	conn := i.getConn()
 	defer conn.Close()
-	fmt.Println(args)
 	_, err := conn.Do(i.commandPrefix+".CREATE", args...)
 	return err
 }

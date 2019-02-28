@@ -219,7 +219,6 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 				}
 			}
 			idx.Index(docs, opts)
-			fmt.Println(numOfDocs)
 		}(doch)
 	}
 	count := 0
@@ -293,7 +292,6 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 	close(doch)
 
 	wg.Wait()
-	fmt.Println("number of docs:", count)
 
 	return nil
 }
