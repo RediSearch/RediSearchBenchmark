@@ -162,6 +162,7 @@ func main() {
 		for i := 0 ; i < 200 ; i++{
 			wg.Add(1)
 			go func(idxChan chan index.Index){
+				defer wg.Done()
 				for idx := range idxChan{
 					idx.Drop()
 					err := idx.Create()
