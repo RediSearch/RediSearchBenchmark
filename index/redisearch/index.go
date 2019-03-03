@@ -281,53 +281,48 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 		}
 	}
 
-	for r := 0; r < 1 ; r += 1{
-		if err := conn.Send(i.commandPrefix+".SEARCH", args...); err != nil {
-			panic(err)
-		}
+	if err := conn.Send(i.commandPrefix+".SEARCH", args...); err != nil {
+		panic(err)
 	}
 
 	if err := conn.Flush(); err != nil {
 		panic(err)
 	}
 
-	for r := 0; r < 1 ; r += 1{
-		if _, err := conn.Receive(); err != nil {
-			panic(err)
-		}
+	if _, err := conn.Receive(); err != nil {
+		panic(err)
 	}
 
-	// res, err := redis.Values(conn.Do(i.commandPrefix+".SEARCH", args...))
-	// if err != nil {
-	// 	return nil, 0, err
-	// }
+	res, err := redis.Values(conn.Do(i.commandPrefix+".SEARCH", args...))
+	if err != nil {
+		return nil, 0, err
+	}
 
-	// if total, err = redis.Int(res[0], nil); err != nil {
-	// 	return nil, 0, err
-	// }
+	if total, err = redis.Int(res[0], nil); err != nil {
+		return nil, 0, err
+	}
 
-	// docs = make([]index.Document, 0, len(res)-1)
+	docs = make([]index.Document, 0, len(res)-1)
 
-	// if len(res) > 2 {
-	// 	for i := 1; i < len(res); i += 2 {
+	if len(res) > 2 {
+		for i := 1; i < len(res); i += 2 {
 
-	// 		var fields interface{} = []interface{}{}
-	// 		if q.Flags&query.QueryNoContent == 0 {
-	// 			fields = res[i+2]
+			var fields interface{} = []interface{}{}
+			if q.Flags&query.QueryNoContent == 0 {
+				fields = res[i+2]
 
-	// 		}
-	// 		if d, e := loadDocument(res[i], res[i+1], fields); e == nil {
-	// 			docs = append(docs, d)
-	// 		}
-	// 		if q.Flags&query.QueryNoContent == 0 {
-	// 			i++
-	// 		}
-	// 	}
-	// }
-	return nil, 0, nil
+			}
+			if d, e := loadDocument(res[i], res[i+1], fields); e == nil {
+				docs = append(docs, d)
+			}
+			if q.Flags&query.QueryNoContent == 0 {
+				i++
+			}
+		}
+	}
+	return docs, len(docs), nil
 }
 
-// Drop the index. Currentl just flushes the DB - note that this will delete EVERYTHING on the redis instance
 func (i *Index) Drop() error {
 	conn := i.getConn()
 	defer conn.Close()

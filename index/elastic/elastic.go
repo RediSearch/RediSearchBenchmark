@@ -32,7 +32,7 @@ func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata) (*I
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: 200,
 			},
-			Timeout: 2000 * time.Millisecond,
+			Timeout: 20000 * time.Millisecond,
 		}
 		conn, err = elastic.NewClient(elastic.SetURL(addr), elastic.SetHttpClient(client))
 		if err != nil {

@@ -98,21 +98,6 @@ func ReadDir(dirName string, pattern string, r DocumentReader, idx index.Index, 
 						dur := time.Since(st)
 						countch <- dur
 
-						// words := strings.Fields(strings.ToLower(doc.Properties["body"].(string)))
-						// grams := map[string]uint32{}
-						// ngrams(words, 1, grams)
-						// ngrams(words, 2, grams)
-						// ngrams(words, 3, grams)
-						// suggestions := make(index.SuggestionList, 0, len(grams))
-						// for gr, count := range grams {
-						// 	suggestions = append(suggestions, index.Suggestion{Term: gr, Score: float64(count)})
-						// }
-						// suggestions.Sort()
-						// if len(suggestions) > 10 {
-						// 	suggestions = suggestions[:10]
-						// }
-						// ac.AddTerms(suggestions...)
-
 					}
 				}
 				wg.Done()
@@ -189,18 +174,14 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 		return err
 	}
 
-	terms := make([]index.Suggestion, chunk*2)
-
-	//freqs := map[string]int{}
 	st := time.Now()
 
-	nterms := 0
 	i := 0
 	n := 0
 	dt := 0
 	totalDt := 0
 	doch := make(chan index.Document, 1)
-	for w := 0; w < 1; w++ {
+	for w := 0; w < 200; w++ {
 		wg.Add(1)
 		go func(doch chan index.Document) {
 			defer wg.Done()
@@ -218,42 +199,13 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 					docs = []index.Document{}
 				}
 			}
-			idx.Index(docs, opts)
+			if(len(docs) > 0){
+				idx.Index(docs, opts)
+			}
 		}(doch)
 	}
-	count := 0
 	for doc := range ch {
 
-		//docs[i%chunk] = doc
-
-		if doc.Score > 0 && ac != nil {
-
-			//			words := strings.Fields(strings.ToLower(doc.Properties["body"].(string)))
-			//			for _, w := range words {
-			//				for i := 2; i < len(w) && i < 5; i++ {
-			//					freqs[w[:i]] += 1
-			//				}
-			//			}
-
-			terms[nterms] = index.Suggestion{
-				strings.ToLower(doc.Properties["title"].(string)),
-				float64(doc.Score),
-			}
-			nterms++
-
-			if nterms == chunk {
-
-				//				for k, v := range freqs {
-				//					fmt.Printf("%d %s\n", v, k)
-				//				}
-				//				os.Exit(0)
-				/*if err := ac.AddTerms(terms...); err != nil {
-					return err
-				}*/
-				nterms = 0
-			}
-
-		}
 		if doc.Score == 0 {
 			doc.Score = 0.0000001
 		}
@@ -269,14 +221,6 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 		i++
 		n++
 		doch <- doc
-		count++
-		// if i%chunk == 0 {
-		// 	//var _docs []index.Document
-		// 	for _, d := range docs {
-		// 		doch <- d
-		// 	}
-
-		// }
 
 		// print report every CHUNK documents
 		if i%chunk == 0 {
@@ -290,7 +234,6 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 	}
 
 	close(doch)
-
 	wg.Wait()
 
 	return nil

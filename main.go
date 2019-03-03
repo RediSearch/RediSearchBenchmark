@@ -37,7 +37,6 @@ func selectIndex(engine string, hosts []string, pass string, temporary int, disa
 	switch engine {
 	case "redis":
 		indexMetadata.Options = redisearch.IndexingOptions{Prefix: cmdPrefix}
-		//return redisearch.NewIndex(hosts[0], "wik{0}", indexMetadata)
 		idx := redisearch.NewIndex(hosts, pass, temporary, name, indexMetadata)
 		ac := redisearch.NewAutocompleter(hosts[0], "ac")
 		return idx, ac, query.QueryVerbatim
@@ -142,7 +141,6 @@ func main() {
 
 			for i := 0; i < N; i++ {
 				chunk[i] = <-ch
-				//fmt.Println(chunk[i])
 				n++
 			}
 
@@ -153,13 +151,10 @@ func main() {
 	}
 	// ingest documents into the selected engine
 	if (*fileName != "" || *dirName != "") && *benchmark == "" {
-		// if ac != nil {
-		// 	ac.Delete()
-		// }
 
 		var wg sync.WaitGroup
 		idxChan := make(chan index.Index, 1)
-		for i := 0 ; i < 200 ; i++{
+		for i := 0 ; i < 30 ; i++{
 			wg.Add(1)
 			go func(idxChan chan index.Index){
 				defer wg.Done()
@@ -170,12 +165,6 @@ func main() {
 						panic(err)
 					}
 					wr := &ingest.WikipediaAbstractsReader{}
-
-					// if *scoreFile != "" {
-					// 	if err := wr.LoadScores(*scoreFile); err != nil {
-					// 		panic(err)
-					// 	}
-					// }
 
 					if *fileName != "" {
 
@@ -194,6 +183,7 @@ func main() {
 		for _,idx := range indexes{
 			idxChan <- idx
 		}
+		close(idxChan)
 		wg.Wait()
 		os.Exit(0)
 	}
