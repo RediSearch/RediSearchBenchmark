@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
-	"github.com/RedisLabs/RediSearchBenchmark/query"
+	"github.com/RediSearch/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/query"
 	"github.com/stretchr/testify/assert"
 )
 

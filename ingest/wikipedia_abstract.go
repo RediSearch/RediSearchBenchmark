@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/index"
 )
 
 func filter(title, body string) bool {
@@ -86,12 +86,11 @@ func (r *WikipediaAbstractsReader) LoadScores(fileName string) error {
 	return nil
 }
 
-func (wr *WikipediaAbstractsReader) Read(r io.Reader) (<-chan index.Document, error) {
+func (wr *WikipediaAbstractsReader) Read(r io.Reader, ch chan index.Document, maxDocsToRead int, idx index.Index)  error {
 
 	dec := xml.NewDecoder(r)
-	ch := make(chan index.Document, 1000)
 	go func() {
-
+		docsRead := 1
 		tok, err := dec.RawToken()
 
 		props := map[string]string{}
@@ -111,7 +110,7 @@ func (wr *WikipediaAbstractsReader) Read(r io.Reader) (<-chan index.Document, er
 					props[name] = currentText
 				} else if name == "doc" {
 
-					id := path.Base(props["url"])
+					id := idx.GetName() + "-" + path.Base(props["url"])
 					if len(id) > 0 {
 						title := strings.TrimPrefix(strings.TrimSpace(props["title"]), "Wikipedia: ")
 						body := strings.TrimSpace(props["abstract"])
@@ -123,17 +122,20 @@ func (wr *WikipediaAbstractsReader) Read(r io.Reader) (<-chan index.Document, er
 								Set("url", strings.TrimSpace(props["url"]))
 								//Set("score", rand.Int31n(50000))
 							ch <- doc
+							docsRead++
 						}
 					}
 					props = map[string]string{}
 				}
 				currentText = ""
 			}
+			if maxDocsToRead != -1 && docsRead >= maxDocsToRead{
+				break
+			} 
 			tok, err = dec.RawToken()
 
 		}
-		fmt.Println("error: ", err)
 		close(ch)
 	}()
-	return ch, nil
+	return nil
 }

@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
-	"github.com/RedisLabs/RediSearchBenchmark/query"
+	"github.com/RediSearch/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/query"
 	"github.com/vanng822/go-solr/solr"
 )
 
@@ -92,6 +92,10 @@ func (i *Index) Drop() error {
 	_, err := i.si.DeleteAll()
 	return err
 
+}
+
+func (i *Index) GetName() string {
+	return i.name
 }
 
 // Create creates the index on Solr

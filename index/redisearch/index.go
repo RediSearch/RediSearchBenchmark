@@ -9,8 +9,8 @@ import (
 
 	"time"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
-	"github.com/RedisLabs/RediSearchBenchmark/query"
+	"github.com/RediSearch/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/query"
 	"github.com/garyburd/redigo/redis"
 )
 
@@ -34,11 +34,21 @@ type IndexingOptions struct {
 	Prefix string
 }
 
+type ConnectionPool struct {
+	sync.Mutex
+	pools		   map[string]*redis.Pool
+}
+
+var connectionPool = ConnectionPool{
+	pools: map[string]*redis.Pool{},
+}
+
 // Index is an interface to redisearch's redis connads
 type Index struct {
 	sync.Mutex
-	pools         map[string]*redis.Pool
 	hosts         []string
+	password      string
+	temporary	  int
 	md            *index.Metadata
 	name          string
 	commandPrefix string
@@ -47,14 +57,19 @@ type Index struct {
 var maxConns = 500
 
 func (i *Index) getConn() redis.Conn {
-	i.Lock()
-	defer i.Unlock()
+	connectionPool.Lock()
+	defer connectionPool.Unlock()
 	host := i.hosts[rand.Intn(len(i.hosts))]
-	pool, found := i.pools[host]
+	pool, found := connectionPool.pools[host]
 	if !found {
 		pool = redis.NewPool(func() (redis.Conn, error) {
 			// TODO: Add timeouts. and 2 separate pools for indexing and querying, with different timeouts
-			return redis.Dial("tcp", host)
+			if i.password != ""{
+				return redis.Dial("tcp", host, redis.DialPassword(i.password))	
+			}else{
+				return redis.Dial("tcp", host)	
+			}
+			
 		}, maxConns)
 		pool.TestOnBorrow = func(c redis.Conn, t time.Time) error {
 			if time.Since(t).Seconds() > 3 {
@@ -64,21 +79,22 @@ func (i *Index) getConn() redis.Conn {
 			return nil
 		}
 
-		i.pools[host] = pool
+		connectionPool.pools[host] = pool
 	}
 	return pool.Get()
 
 }
 
 // NewIndex creates a new index connecting to the redis host, and using the given name as key prefix
-func NewIndex(addrs []string, name string, md *index.Metadata) *Index {
+func NewIndex(addrs []string, pass string, temporary int, name string, md *index.Metadata) *Index {
 
 	ret := &Index{
 
-		pools: map[string]*redis.Pool{},
 		hosts: addrs,
 
 		md: md,
+		password: pass,
+		temporary: temporary,
 
 		name: name,
 
@@ -97,10 +113,19 @@ func NewIndex(addrs []string, name string, md *index.Metadata) *Index {
 
 }
 
+func (i *Index) GetName() string {
+	return i.name
+}
+
 // Create configues the index and creates it on redis
 func (i *Index) Create() error {
 
-	args := redis.Args{i.name, "SCHEMA"}
+	args := redis.Args{i.name}
+	if i.temporary != -1{
+		t := strconv.Itoa(i.temporary)
+		args = append(args, "TEMPORARY", t)
+	}
+	args = append(args, "SCHEMA")
 
 	for _, f := range i.md.Fields {
 
@@ -132,7 +157,6 @@ func (i *Index) Create() error {
 
 	conn := i.getConn()
 	defer conn.Close()
-	fmt.Println(args)
 	_, err := conn.Do(i.commandPrefix+".CREATE", args...)
 	return err
 }
@@ -257,13 +281,25 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 		}
 	}
 
+	if err := conn.Send(i.commandPrefix+".SEARCH", args...); err != nil {
+		panic(err)
+	}
+
+	if err := conn.Flush(); err != nil {
+		panic(err)
+	}
+
+	if _, err := conn.Receive(); err != nil {
+		panic(err)
+	}
+
 	res, err := redis.Values(conn.Do(i.commandPrefix+".SEARCH", args...))
 	if err != nil {
-		return
+		return nil, 0, err
 	}
 
 	if total, err = redis.Int(res[0], nil); err != nil {
-		return
+		return nil, 0, err
 	}
 
 	docs = make([]index.Document, 0, len(res)-1)
@@ -284,15 +320,14 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 			}
 		}
 	}
-	return
+	return docs, len(docs), nil
 }
 
-// Drop the index. Currentl just flushes the DB - note that this will delete EVERYTHING on the redis instance
 func (i *Index) Drop() error {
 	conn := i.getConn()
 	defer conn.Close()
 
-	_, err := conn.Do("FLUSHDB")
+	_, err := conn.Do("FT.DROP", i.name)
 	return err
 
 }

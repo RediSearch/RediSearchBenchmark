@@ -6,9 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
-	"github.com/RedisLabs/RediSearchBenchmark/query"
-	"gopkg.in/olivere/elastic.v3"
+	"github.com/RediSearch/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/query"
+	"gopkg.in/olivere/elastic.v6"
+	"context"
 )
 
 // Index is an ElasticSearch index
@@ -18,26 +19,33 @@ type Index struct {
 	md   *index.Metadata
 	name string
 	typ  string
+	disableCache bool
 }
 
-// NewIndex creates a new elasticSearch index with the given address and name. typ is the entity type
-func NewIndex(addr, name, typ string, md *index.Metadata) (*Index, error) {
+var conn *elastic.Client = nil
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConnsPerHost: 200,
-		},
-		Timeout: 250 * time.Millisecond,
+// NewIndex creates a new elasticSearch index with the given address and name. typ is the entity type
+func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata) (*Index, error) {
+	var err error
+	if conn == nil{
+		client := &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConnsPerHost: 200,
+			},
+			Timeout: 20000 * time.Millisecond,
+		}
+		conn, err = elastic.NewClient(elastic.SetURL(addr), elastic.SetHttpClient(client))
+		if err != nil {
+			return nil, err
+		}
 	}
-	conn, err := elastic.NewClient(elastic.SetURL(addr), elastic.SetHttpClient(client))
-	if err != nil {
-		return nil, err
-	}
+	
 	ret := &Index{
 		conn: conn,
 		md:   md,
 		name: name,
 		typ:  typ,
+		disableCache: disableCache,
 	}
 
 	return ret, nil
@@ -54,12 +62,16 @@ type mapping struct {
 func fieldTypeString(f index.FieldType) (string, error) {
 	switch f {
 	case index.TextField:
-		return "string", nil
+		return "text", nil
 	case index.NumericField:
 		return "double", nil
 	default:
 		return "", errors.New("Unsupported field type")
 	}
+}
+
+func (i *Index) GetName() string {
+	return i.name
 }
 
 // Create creates the index and posts a mapping corresponding to our Metadata
@@ -76,21 +88,30 @@ func (i *Index) Create() error {
 	}
 
 	// we currently manually create the autocomplete mapping
-	ac := mapping{
-		Properties: map[string]mappingProperty{
-			"sugg": mappingProperty{
-				"type":     "completion",
-				"payloads": true,
-			},
-		},
-	}
+	// ac := mapping{
+	// 	Properties: map[string]mappingProperty{
+	// 		"sugg": mappingProperty{
+	// 			"type":     "completion",
+	// 			"payloads": true,
+	// 		},
+	// 	},
+	// }	
 
 	mappings := map[string]mapping{
 		i.typ:          doc,
-		"autocomplete": ac,
+		// "autocomplete": ac,
 	}
 
-	_, err := i.conn.CreateIndex(i.name).BodyJson(map[string]interface{}{"mappings": mappings}).Do()
+	settings := map[string]interface{}{
+		"index.requests.cache.enable": !i.disableCache,
+		// "autocomplete": ac,
+	}
+
+	_, err := i.conn.CreateIndex(i.name).BodyJson(map[string]interface{}{"mappings": mappings, "settings": settings}).Do(context.Background())
+
+	if err != nil {
+		panic(err)
+	}
 
 	return err
 }
@@ -99,13 +120,16 @@ func (i *Index) Create() error {
 func (i *Index) Index(docs []index.Document, opts interface{}) error {
 
 	blk := i.conn.Bulk()
-
 	for _, doc := range docs {
 		req := elastic.NewBulkIndexRequest().Index(i.name).Type("doc").Id(doc.Id).Doc(doc.Properties)
 		blk.Add(req)
 
 	}
-	_, err := blk.Refresh(true).Do()
+	_, err := blk.Refresh("true").Do(context.Background())
+
+	if err != nil{
+		panic(err)
+	}
 
 	return err
 }
@@ -119,10 +143,10 @@ func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 		Query(eq).
 		From(q.Paging.Offset).
 		Size(q.Paging.Num).
-		Do()
+		Do(context.Background())
 
 	if err != nil {
-		return nil, 0, err
+		panic(err)
 	}
 
 	ret := make([]index.Document, 0, q.Paging.Num)
@@ -142,7 +166,7 @@ func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 
 // Drop deletes the index
 func (i *Index) Drop() error {
-	i.conn.DeleteIndex(i.name).Do()
+	i.conn.DeleteIndex(i.name).Do(context.Background())
 
 	return nil
 }
@@ -158,7 +182,7 @@ func (i *Index) AddTerms(terms ...index.Suggestion) error {
 		blk.Add(req)
 
 	}
-	_, err := blk.Refresh(true).Do()
+	_, err := blk.Refresh("true").Do(context.Background())
 
 	return err
 
@@ -168,28 +192,28 @@ func (i *Index) AddTerms(terms ...index.Suggestion) error {
 // TODO: fuzzy not supported yet
 func (i *Index) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion, error) {
 
-	s := elastic.NewCompletionSuggester("autocomplete").Field("sugg").Text(prefix).Size(num)
+	// s := elastic.NewCompletionSuggester("autocomplete").Field("sugg").Text(prefix).Size(num)
 
-	res, err := i.conn.Suggest(i.name).Suggester(s).Do()
-	if err != nil {
-		return nil, err
-	}
+	// res, err := i.conn.Suggest(i.name).Suggester(s).Do(context.Background())
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	if suggs, found := res["autocomplete"]; found {
-		if len(suggs) > 0 {
-			opts := suggs[0].Options
+	// if suggs, found := res["autocomplete"]; found {
+	// 	if len(suggs) > 0 {
+	// 		opts := suggs[0].Options
 
-			ret := make([]index.Suggestion, 0, len(opts))
-			for _, op := range opts {
-				ret = append(ret, index.Suggestion{Term: op.Text, Score: float64(op.Score)})
-			}
-			return ret, nil
-		}
+	// 		ret := make([]index.Suggestion, 0, len(opts))
+	// 		for _, op := range opts {
+	// 			ret = append(ret, index.Suggestion{Term: op.Text, Score: float64(op.Score)})
+	// 		}
+	// 		return ret, nil
+	// 	}
 
-	}
+	// }
 
 	//ret := make([]index.Suggestion, res.)
-	return nil, err
+	return nil, nil
 
 }
 

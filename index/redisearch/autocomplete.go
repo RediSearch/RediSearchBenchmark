@@ -3,7 +3,7 @@ package redisearch
 import (
 	"strconv"
 
-	"github.com/RedisLabs/RediSearchBenchmark/index"
+	"github.com/RediSearch/RediSearchBenchmark/index"
 	"github.com/garyburd/redigo/redis"
 )
 
