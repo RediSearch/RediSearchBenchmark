@@ -19,46 +19,47 @@ It supports reading [Wikipedia Abstract Data Dumps](https://dumps.wikimedia.org/
 * [ElasticSearch](https://www.elastic.co/)
 * [Solr](http://lucene.apache.org/solr/)
 
-## Some Results
+## Benchmarking
 
-Output of the benchmark, running on a full Abstracts dump of the English wikipedia, on 5 redis shards over a `c4.4xlarge` EC2 instance:
+### Benchmarking Redisearch
+The following benchmark is running on a full Abstracts dump of the English wikipedia, on 5 shards over a `c4.8xlarge` EC2 instance, performing two-word search queries with 32 clients:
+
+Steps:
+
+* Create a 5 shards redisearch cluster on redis entrprise with the following configuration:
+```
+PARTITION AUTO MAXDOCTABLESIZE 10000000
+```
+
+* Populate Data:
+```
+```
+
+* Running benchmark:
+```
+```
+Results:
 
 Benchmark | Concurrent Clients | Throughput (requests/sec) | Average Latency (ms)
 --- | --- | --- | --- 
-search: hello | 1 | 2737.57 | 0.36
-search: hello | 8 | 9706.18 | 0.80
-search: hello | 16 | 11201.99 | 1.39
-search: hello|32|13198.80|2.36
-search: hello|64|17663.32|3.51
-|  |  | | 
-search: barack obama|64|16482.96|3.77
-search: barack obama|1|2505.68|0.40
-search: barack obama|8|8522.50|0.91
-search: barack obama|16|10346.83|1.50
-search: barack obama|32|11720.58|2.66
-| | | | 
-exact: "united states of america"|1|618.86|1.62
-exact: "united states of america"|8|816.22|9.38
-exact: "united states of america"|16|816.47|18.97
-exact: "united states of america"|32|815.41|37.44
-exact: "united states of america"|64|801.75|75.61
-| | | |
-search: manchester united|1|1513.97|0.66
-search: manchester united|4|3192.11|1.23
-search: manchester united|16|3485.66|4.43
-search: manchester united|32|3512.08|8.80
-search: manchester united|64|3559.03|17.29
-| | | | 
-autocomplete (2-3 letters) |1|4145.90|0.24
-autocomplete (2-3 letters) |4|9691.04|0.41
-autocomplete (2-3 letters) |8|12129.34|0.64
-autocomplete (2-3 letters) |16|15268.47|1.00
-autocomplete (2-3 letters) |32|16064.66|1.90
-autocomplete (2-3 letters) |64|17255.77|3.51
-autocomplete (2-3 letters) |128|17935.49|6.47
+two-word search | 32 | 12547 | 8
+
+### Benchmarking Multi-tenant Redisearch
+The following benchmark test the amount of time it takes to create 50K indices with 500 docs in each index. total of 25 million documents. It uses the oss redisearch version on redis enterprise cluster.
+
+Steps:
+
+* Create a 20 shards redisearch cluster on redis entrprise.
+
+* Populate Data:
+```
+```
+Results:
+
+Indexing took: 3 minutes and 21 seconds
 
 
-## Benchmark output
+## Benchmark
 
 For each benchmark, we append a single line to a CSV file, with the engine used, benchmark type, query, concurrency, throughput and latency.
 
@@ -68,7 +69,7 @@ The output for running a benchmark on the queries "foo,bar,baz" with 4 concurren
 
 ```
 redis,"search: foo,bar,baz",4,14997.81,0.27
-``` 
+```
 
 ## Usage
 
@@ -94,8 +95,16 @@ Usage of ./RediSearchBenchmark:
     	comma separated list of queries to benchmark (default "hello world")
   -scores string
     	read scores of documents CSV for indexing
-  -shards int
-    	the number of partitions we want (AT LEAST the number of cluster shards) (default 1)
+  -indexes int
+      the total number of indexes to generate
+  -disableCache
+      for elastic only, disabling query cache
+  -temporary int
+      for redisearch only, create a temporary index that will expire after the given amount of seconds
+  -maxdocs int
+      specify the max numebr of docs per index, -1 for no limit
+  -password string
+      redis database password
 ```
 
 ## Example: Indexing documents into RediSearch
