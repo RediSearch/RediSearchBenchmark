@@ -26,7 +26,7 @@ The following benchmark is running on a full Abstracts dump of the English wikip
 
 Steps:
 
-* Create a 5 shards redisearch cluster on redis entrprise with the following configuration:
+* Create a 5 shard redisearch cluster on redis entrprise with the following configuration:
 ```
 PARTITION AUTO MAXDOCTABLESIZE 10000000
 ```
@@ -35,7 +35,7 @@ PARTITION AUTO MAXDOCTABLESIZE 10000000
 ```
 ```
 
-* Running benchmark:
+* Run the benchmark:
 ```
 ```
 Results:
@@ -45,11 +45,11 @@ Benchmark | Concurrent Clients | Throughput (requests/sec) | Average Latency (ms
 two-word search | 32 | 12547 | 8
 
 ### Benchmarking Multi-tenant Redisearch
-The following benchmark test the amount of time it takes to create 50K indices with 500 docs in each index. total of 25 million documents. It uses the oss redisearch version on redis enterprise cluster.
+The following benchmark tests the amount of time it takes to create 50,000 indexes with 500 docs in each index, for a total of 25M documents. It uses the enterprise version of RediSearch on Redis Enterprise Cluster.
 
 Steps:
 
-* Create a 20 shards redisearch cluster on redis entrprise.
+* Create a 20 shard redisearch cluster on redis entrprise.
 
 * Populate Data:
 ```
