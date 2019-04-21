@@ -32,7 +32,7 @@ var indexMetadata = index.NewMetadata().
 	//AddField(index.NewNumericField("ups"))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
-func selectIndex(engine string, hosts []string, pass string, temporary int, disableCache bool, name string, partitions int, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
+func selectIndex(engine string, hosts []string, pass string, temporary int, disableCache bool, name string, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
 	case "redis":
@@ -61,7 +61,6 @@ func selectIndex(engine string, hosts []string, pass string, temporary int, disa
 func main() {
 
 	hosts := flag.String("hosts", "localhost:6379", "comma separated list of host:port to redis nodes")
-	partitions := flag.Int("shards", 1, "the number of partitions we want (AT LEAST the number of cluster shards)")
 	fileName := flag.String("file", "", "Input file to ingest data from (wikipedia abstracts)")
 	dirName := flag.String("dir", "", "Recursively read all files in a directory")
 	fileMatch := flag.String("match", ".*", "When reading directories, match only files with this glob")
@@ -98,7 +97,7 @@ func main() {
 	// select index to run
 	for i := 0; i < *indexesAmount; i++ {
 		name := IndexNamePrefix + strconv.Itoa(i)
-		idx, _, _ := selectIndex(*engine, servers, *password, *temporary, *disableCache, name, *partitions, *cmdPrefix)
+		idx, _, _ := selectIndex(*engine, servers, *password, *temporary, *disableCache, name, *cmdPrefix)
 		indexes[i] = idx
 	}
 
