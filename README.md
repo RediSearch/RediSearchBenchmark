@@ -5,11 +5,10 @@
 [![GoDoc](https://godoc.org/github.com/RediSearch/RediSearchBenchmark?status.svg)](https://godoc.org/github.com/RediSearch/RediSearchBenchmark)
 
 # RediSearchBenchmarks
-This is a Go application (originally written by Dvir Volk) which supports reading, indexing and searching in [Wikipedia Abstract Data Dumps](https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-abstract.xml) using three search engines:  
+This is a Go application (originally written by Dvir Volk) which supports reading, indexing and searching in [Wikipedia Abstract Data Dumps](https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-abstract.xml) using two search engines:  
 
 * [RediSearch](https://github.com/RedisLabsModules/RediSearch)
 * [ElasticSearch](https://www.elastic.co/)
-* [Solr](http://lucene.apache.org/solr/)
 
 ## Usage 
 
@@ -47,12 +46,12 @@ Usage of ./RediSearchBenchmark:
       redis database password
 ```
 
-### Benchmarking Redisearch
+### Benchmarking RediSearch
 The following commands perform a two words search query using 5 shards over a `c4.8xlarge` EC2 instance.
 
 Steps:
 
-* Create a 5 shard redisearch cluster on Redis Enterprise with the following configuration:
+* Create a 5 shard RediSearch cluster on Redis Enterprise with the following configuration:
 ```
 PARTITION AUTO MAXDOCTABLESIZE 10000000
 ```
@@ -68,7 +67,7 @@ PARTITION AUTO MAXDOCTABLESIZE 10000000
 ```
 
 
-### Multi-Tenant Redisearch benchmark
+### Multi-Tenant RediSearch benchmark
 The following benchmark tests the amount of time it takes to create 50,000 indexes with 500 docs in each index, for a total of 25M documents. 
 
 Steps:
