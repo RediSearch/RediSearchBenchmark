@@ -8,7 +8,7 @@
 This is a Go application (originally written by Dvir Volk) which supports reading, indexing and searching in [Wikipedia Abstract Data Dumps](https://dumps.wikimedia.org/enwiki/latest/enwiki-latest-abstract.xml) using two search engines:  
 
 * [RediSearch](https://github.com/RedisLabsModules/RediSearch)
-* [ElasticSearch](https://www.elastic.co/)
+* [Elasticsearch](https://www.elastic.co/)
 
 ## Usage 
 
