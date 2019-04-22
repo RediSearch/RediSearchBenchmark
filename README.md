@@ -33,10 +33,12 @@ PARTITION AUTO MAXDOCTABLESIZE 10000000
 
 * Populate Data:
 ```
+./RediSearchBenchmark -hosts "host:port" -engine redis -file enwiki-latest-abstract.xml
 ```
 
 * Run the benchmark:
 ```
+./RediSearchBenchmark -hosts "host:port" -engine redis -benchmark search -queries "Barack Obama" -c 32 -duration 30
 ```
 Results:
 
@@ -49,10 +51,11 @@ The following benchmark tests the amount of time it takes to create 50,000 index
 
 Steps:
 
-* Create a 20 shard redisearch cluster on redis entrprise.
+* Create a 20 shard redisearch cluster on redis enterprise.
 
 * Populate Data:
 ```
+./RediSearchBenchmark -hosts "host:port" -engine redis -file enwiki-latest-abstract.xml -indexes 50000 -maxdocs 500 -temporary 2147483647
 ```
 Results:
 
