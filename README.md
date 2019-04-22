@@ -79,8 +79,6 @@ Steps:
 ```
 ./RediSearchBenchmark -hosts "host:port" -engine redis -file enwiki-latest-abstract.xml -indexes 50000 -maxdocs 500 -temporary 2147483647
 ```
-Results:
 
-Indexing took: 3 minutes and 21 seconds
 
 
