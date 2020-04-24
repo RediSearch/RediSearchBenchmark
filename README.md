@@ -1,7 +1,5 @@
 [![license](https://img.shields.io/github/license/RediSearch/RediSearchBenchmark.svg)](https://github.com/RediSearch/RediSearchBenchmark)
-<!--[![CircleCI](https://circleci.com/gh/RediSearch/RediSearchBenchmark/tree/master.svg?style=svg)](https://circleci.com/gh/RediSearch/RediSearchBenchmark/tree/master)
-[![GitHub issues](https://img.shields.io/github/release/RediSearch/RediSearchBenchmark.svg)](https://github.com/RediSearch/RediSearchBenchmark/releases/latest)
-[![Codecov](https://codecov.io/gh/RediSearch/RediSearchBenchmark/branch/master/graph/badge.svg)](https://codecov.io/gh/RediSearch/RediSearchBenchmark) -->
+[![Forum](https://img.shields.io/badge/Forum-RediSearch-blue)](https://forum.redislabs.com/c/modules/redisearch/)
 [![GoDoc](https://godoc.org/github.com/RediSearch/RediSearchBenchmark?status.svg)](https://godoc.org/github.com/RediSearch/RediSearchBenchmark)
 
 # RediSearchBenchmarks
