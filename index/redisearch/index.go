@@ -36,7 +36,7 @@ type IndexingOptions struct {
 
 type ConnectionPool struct {
 	sync.Mutex
-	pools		   map[string]*redis.Pool
+	pools map[string]*redis.Pool
 }
 
 var connectionPool = ConnectionPool{
@@ -48,7 +48,7 @@ type Index struct {
 	sync.Mutex
 	hosts         []string
 	password      string
-	temporary	  int
+	temporary     int
 	md            *index.Metadata
 	name          string
 	commandPrefix string
@@ -64,12 +64,12 @@ func (i *Index) getConn() redis.Conn {
 	if !found {
 		pool = redis.NewPool(func() (redis.Conn, error) {
 			// TODO: Add timeouts. and 2 separate pools for indexing and querying, with different timeouts
-			if i.password != ""{
-				return redis.Dial("tcp", host, redis.DialPassword(i.password))	
-			}else{
-				return redis.Dial("tcp", host)	
+			if i.password != "" {
+				return redis.Dial("tcp", host, redis.DialPassword(i.password))
+			} else {
+				return redis.Dial("tcp", host)
 			}
-			
+
 		}, maxConns)
 		pool.TestOnBorrow = func(c redis.Conn, t time.Time) error {
 			if time.Since(t).Seconds() > 3 {
@@ -92,8 +92,8 @@ func NewIndex(addrs []string, pass string, temporary int, name string, md *index
 
 		hosts: addrs,
 
-		md: md,
-		password: pass,
+		md:        md,
+		password:  pass,
 		temporary: temporary,
 
 		name: name,
@@ -121,7 +121,7 @@ func (i *Index) GetName() string {
 func (i *Index) Create() error {
 
 	args := redis.Args{i.name}
-	if i.temporary != -1{
+	if i.temporary != -1 {
 		t := strconv.Itoa(i.temporary)
 		args = append(args, "TEMPORARY", t)
 	}

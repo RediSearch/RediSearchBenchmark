@@ -4,14 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 
 	"runtime"
 
 	"sync"
-
 
 	"github.com/RediSearch/RediSearchBenchmark/index"
 	"github.com/RediSearch/RediSearchBenchmark/index/elastic"
@@ -91,7 +90,7 @@ func main() {
 
 	indexes := make([]index.Index, *indexesAmount)
 	var opts interface{}
-	if *engine == "redis"{
+	if *engine == "redis" {
 		opts = query.QueryVerbatim
 	}
 	// select index to run
@@ -103,7 +102,7 @@ func main() {
 
 	// Search benchmark
 	if *benchmark == "search" {
-		if(*indexesAmount > 1){
+		if *indexesAmount > 1 {
 			panic("search not supported on multiple indexes!!!")
 		}
 		name := fmt.Sprintf("search: %s", *qs)
@@ -122,7 +121,7 @@ func main() {
 	if *random > 0 {
 		indexes[0].Drop()
 		err := indexes[0].Create()
-		if err != nil{
+		if err != nil {
 			panic(err)
 		}
 
@@ -132,7 +131,7 @@ func main() {
 		n := 0
 		ch := make(chan index.Document, N)
 		go func() {
-			for i :=0 ; i < *maxDocPerIndex || *maxDocPerIndex == -1 ; i++{
+			for i := 0; i < *maxDocPerIndex || *maxDocPerIndex == -1; i++ {
 				ch <- gen.Generate(0)
 			}
 		}()
@@ -153,14 +152,14 @@ func main() {
 
 		var wg sync.WaitGroup
 		idxChan := make(chan index.Index, 1)
-		for i := 0 ; i < 30 ; i++{
+		for i := 0; i < 30; i++ {
 			wg.Add(1)
-			go func(idxChan chan index.Index){
+			go func(idxChan chan index.Index) {
 				defer wg.Done()
-				for idx := range idxChan{
+				for idx := range idxChan {
 					idx.Drop()
 					err := idx.Create()
-					if err != nil{
+					if err != nil {
 						panic(err)
 					}
 					wr := &ingest.WikipediaAbstractsReader{}
@@ -179,7 +178,7 @@ func main() {
 			}(idxChan)
 		}
 
-		for _,idx := range indexes{
+		for _, idx := range indexes {
 			idxChan <- idx
 		}
 		close(idxChan)

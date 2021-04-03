@@ -5,7 +5,7 @@
 # RediSearchBenchmarks
 This is a Go application (originally written by Dvir Volk) which supports reading, indexing and searching in [Wikipedia Abstract Data Dumps](https://s3.amazonaws.com/uploads-files/wiki_dump.gz) using two search engines:  
 
-* [RediSearch](https://github.com/RedisLabsModules/RediSearch)
+* [RediSearch](https://github.com/RediSearch/RediSearch)
 * [Elasticsearch](https://www.elastic.co/)
 
 ## Usage 
