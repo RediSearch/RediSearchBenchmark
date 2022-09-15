@@ -1,3 +1,8 @@
 *.a
 *.o
 RediSearchBenchmark
+bin/*
+*.csv
+*.xml
+*.gz
+.idea/*
