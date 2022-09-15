@@ -4,14 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 
 	"runtime"
 
 	"sync"
-
 
 	"github.com/RediSearch/RediSearchBenchmark/index"
 	"github.com/RediSearch/RediSearchBenchmark/index/elastic"
@@ -67,16 +66,16 @@ func main() {
 
 	//scoreFile := flag.String("scores", "", "read scores of documents CSV for indexing")
 	engine := flag.String("engine", "redis", "The search backend to run")
-	benchmark := flag.String("benchmark", "", "[search|suggest] - if set, we run the given benchmark")
+	benchmark := flag.String("benchmark", "", "[search|suggest|wildcard|prefix] - if set, we run the given benchmark")
 	random := flag.Int("random", 0, "Generate random documents with terms like term0..term{N}")
 	indexesAmount := flag.Int("indexes", 1, "number of indexes to generate")
 	// fuzzy := flag.Bool("fuzzy", false, "For redis only - benchmark fuzzy auto suggest")
 	disableCache := flag.Bool("disableCache", false, "for elastic only, disabling query cache")
-	seconds := flag.Int("duration", 5, "number of seconds to run the benchmark")
+	seconds := flag.Int("duration", 60, "number of seconds to run the benchmark")
 	temporary := flag.Int("temporary", -1, "for redisearch only, create a temporary index that will expire after the given amount of seconds, -1 mean no temporary")
 	conc := flag.Int("c", 4, "benchmark concurrency")
 	maxDocPerIndex := flag.Int("maxdocs", -1, "specify the numebr of max docs per index, -1 for no limit")
-	qs := flag.String("queries", "hello world", "comma separated list of queries to benchmark")
+	qs := flag.String("queries", "barack obama", "comma separated list of queries to benchmark. Use this option only for the historical reasons via `-queries='barack obama'`. If you don't specify a value it will read the input file and randomize the input search terms")
 	outfile := flag.String("o", "benchmark.csv", "results output file. set to - for stdout")
 	cmdPrefix := flag.String("prefix", "FT", "Command prefix for FT module")
 	password := flag.String("password", "", "redis database password")
@@ -91,7 +90,7 @@ func main() {
 
 	indexes := make([]index.Index, *indexesAmount)
 	var opts interface{}
-	if *engine == "redis"{
+	if *engine == "redis" {
 		opts = query.QueryVerbatim
 	}
 	// select index to run
@@ -103,7 +102,7 @@ func main() {
 
 	// Search benchmark
 	if *benchmark == "search" {
-		if(*indexesAmount > 1){
+		if *indexesAmount > 1 {
 			panic("search not supported on multiple indexes!!!")
 		}
 		name := fmt.Sprintf("search: %s", *qs)
@@ -122,7 +121,7 @@ func main() {
 	if *random > 0 {
 		indexes[0].Drop()
 		err := indexes[0].Create()
-		if err != nil{
+		if err != nil {
 			panic(err)
 		}
 
@@ -132,7 +131,7 @@ func main() {
 		n := 0
 		ch := make(chan index.Document, N)
 		go func() {
-			for i :=0 ; i < *maxDocPerIndex || *maxDocPerIndex == -1 ; i++{
+			for i := 0; i < *maxDocPerIndex || *maxDocPerIndex == -1; i++ {
 				ch <- gen.Generate(0)
 			}
 		}()
@@ -153,14 +152,14 @@ func main() {
 
 		var wg sync.WaitGroup
 		idxChan := make(chan index.Index, 1)
-		for i := 0 ; i < 30 ; i++{
+		for i := 0; i < 30; i++ {
 			wg.Add(1)
-			go func(idxChan chan index.Index){
+			go func(idxChan chan index.Index) {
 				defer wg.Done()
-				for idx := range idxChan{
+				for idx := range idxChan {
 					idx.Drop()
 					err := idx.Create()
-					if err != nil{
+					if err != nil {
 						panic(err)
 					}
 					wr := &ingest.WikipediaAbstractsReader{}
@@ -179,7 +178,7 @@ func main() {
 			}(idxChan)
 		}
 
-		for _,idx := range indexes{
+		for _, idx := range indexes {
 			idxChan <- idx
 		}
 		close(idxChan)

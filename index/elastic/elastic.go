@@ -6,19 +6,19 @@ import (
 	"net/http"
 	"time"
 
+	"context"
 	"github.com/RediSearch/RediSearchBenchmark/index"
 	"github.com/RediSearch/RediSearchBenchmark/query"
 	"gopkg.in/olivere/elastic.v6"
-	"context"
 )
 
 // Index is an ElasticSearch index
 type Index struct {
 	conn *elastic.Client
 
-	md   *index.Metadata
-	name string
-	typ  string
+	md           *index.Metadata
+	name         string
+	typ          string
 	disableCache bool
 }
 
@@ -27,7 +27,7 @@ var conn *elastic.Client = nil
 // NewIndex creates a new elasticSearch index with the given address and name. typ is the entity type
 func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata) (*Index, error) {
 	var err error
-	if conn == nil{
+	if conn == nil {
 		client := &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: 200,
@@ -39,12 +39,12 @@ func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata) (*I
 			return nil, err
 		}
 	}
-	
+
 	ret := &Index{
-		conn: conn,
-		md:   md,
-		name: name,
-		typ:  typ,
+		conn:         conn,
+		md:           md,
+		name:         name,
+		typ:          typ,
 		disableCache: disableCache,
 	}
 
@@ -95,10 +95,10 @@ func (i *Index) Create() error {
 	// 			"payloads": true,
 	// 		},
 	// 	},
-	// }	
+	// }
 
 	mappings := map[string]mapping{
-		i.typ:          doc,
+		i.typ: doc,
 		// "autocomplete": ac,
 	}
 
@@ -127,7 +127,7 @@ func (i *Index) Index(docs []index.Document, opts interface{}) error {
 	}
 	_, err := blk.Refresh("true").Do(context.Background())
 
-	if err != nil{
+	if err != nil {
 		panic(err)
 	}
 

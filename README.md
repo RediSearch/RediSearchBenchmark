@@ -3,10 +3,15 @@
 [![GoDoc](https://godoc.org/github.com/RediSearch/RediSearchBenchmark?status.svg)](https://godoc.org/github.com/RediSearch/RediSearchBenchmark)
 
 # RediSearchBenchmarks
-This is a Go application (originally written by Dvir Volk) which supports reading, indexing and searching in [Wikipedia Abstract Data Dumps](https://s3.amazonaws.com/uploads-files/wiki_dump.gz) using two search engines:  
+This is a Go application (originally written by Dvir Volk) which supports reading, indexing and searching using two search engines:
 
-* [RediSearch](https://github.com/RedisLabsModules/RediSearch)
+* [RediSearch](https://github.com/RediSearch/RediSearch)
 * [Elasticsearch](https://www.elastic.co/)
+
+with the following datasets:
+
+* [Wikipedia Abstract Data Dumps](https://s3.amazonaws.com/benchmarks.redislabs/redisearch/datasets/enwiki-abstract/enwiki-latest-abstract.xml): from English-language Wikipedia:Database page abstracts. This use case generates 3 TEXT fields per document.
+* [pmc](https://s3.amazonaws.com/benchmarks.redislabs/redisearch/datasets/pmc/documents.json): Full text benchmark with academic papers from PMC.
 
 ## Usage 
 

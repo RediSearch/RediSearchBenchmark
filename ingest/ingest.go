@@ -190,16 +190,16 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 			for doc := range doch {
 				if doc.Id != "" {
 					docs = append(docs, doc)
-					numOfDocs++;
-				}else{
+					numOfDocs++
+				} else {
 					fmt.Println("warning empty id")
 				}
-				if(len(docs) > 1000){
+				if len(docs) > 1000 {
 					idx.Index(docs, opts)
 					docs = []index.Document{}
 				}
 			}
-			if(len(docs) > 0){
+			if len(docs) > 0 {
 				idx.Index(docs, opts)
 			}
 		}(doch)
