@@ -1,47 +1,104 @@
 package elastic
 
 import (
+	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/elastic/go-elasticsearch/v8/esapi"
+	"github.com/elastic/go-elasticsearch/v8/esutil"
+	"log"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"context"
 	"github.com/RediSearch/RediSearchBenchmark/index"
 	"github.com/RediSearch/RediSearchBenchmark/query"
-	"gopkg.in/olivere/elastic.v6"
+	"github.com/cenkalti/backoff/v4"
+	elastic "github.com/elastic/go-elasticsearch/v8"
 )
 
 // Index is an ElasticSearch index
 type Index struct {
-	conn *elastic.Client
-
+	conn         *elastic.Client
+	bi           esutil.BulkIndexer
 	md           *index.Metadata
 	name         string
 	typ          string
 	disableCache bool
 }
 
-var conn *elastic.Client = nil
-
 // NewIndex creates a new elasticSearch index with the given address and name. typ is the entity type
-func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata) (*Index, error) {
+func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, user, pass string) (*Index, error) {
 	var err error
-	if conn == nil {
-		client := &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConnsPerHost: 200,
+	retryBackoff := backoff.NewExponentialBackOff()
+	elasticMaxRetriesPropDefault := 10
+	cfg := elastic.Config{
+		Addresses: strings.Split(addr, ","),
+		// Retry on 429 TooManyRequests statuses
+		RetryOnStatus: []int{502, 503, 504, 429},
+
+		// Configure the backoff function
+		RetryBackoff: func(i int) time.Duration {
+			if i == 1 {
+				retryBackoff.Reset()
+			}
+			return retryBackoff.NextBackOff()
+		},
+		MaxRetries: elasticMaxRetriesPropDefault,
+		Username:   user,
+		Password:   pass,
+		// Transport / SSL
+		Transport: &http.Transport{
+			MaxIdleConnsPerHost:   10,
+			ResponseHeaderTimeout: time.Second,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
 			},
-			Timeout: 20000 * time.Millisecond,
-		}
-		conn, err = elastic.NewClient(elastic.SetURL(addr), elastic.SetHttpClient(client))
-		if err != nil {
-			return nil, err
-		}
+		},
+	}
+	es, err := elastic.NewClient(cfg)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("Error creating the elastic client: %s", err))
+		return nil, err
+	}
+	fmt.Println("Connected to elastic!")
+	fmt.Println(es.Info())
+
+	// Create the BulkIndexer
+	bulkIndexerFlushIntervalSecondsPropDefault := 30
+	var flushIntervalTime = bulkIndexerFlushIntervalSecondsPropDefault * int(time.Second)
+	bulkIndexerFlushBytes := int(5e+6)
+	bulkIndexerNumCpus := 4
+	bulkIndexerRefresh := "false"
+
+	bi, err := esutil.NewBulkIndexer(esutil.BulkIndexerConfig{
+		Index:         name,                             // The default index name
+		Client:        es,                               // The Elasticsearch client
+		NumWorkers:    bulkIndexerNumCpus,               // The number of worker goroutines
+		FlushBytes:    bulkIndexerFlushBytes,            // The flush threshold in bytes
+		FlushInterval: time.Duration(flushIntervalTime), // The periodic flush interval
+		// If true, Elasticsearch refreshes the affected
+		// shards to make this operation visible to search
+		// if wait_for then wait for a refresh to make this operation visible to search,
+		// if false do nothing with refreshes. Valid values: true, false, wait_for. Default: false.
+		Refresh: bulkIndexerRefresh,
+	})
+	if err != nil {
+		fmt.Println("Error creating the elastic indexer: %s", err)
+		return nil, err
 	}
 
 	ret := &Index{
-		conn:         conn,
+		conn:         es,
+		bi:           bi,
 		md:           md,
 		name:         name,
 		typ:          typ,
@@ -107,84 +164,140 @@ func (i *Index) Create() error {
 		// "autocomplete": ac,
 	}
 
-	_, err := i.conn.CreateIndex(i.name).BodyJson(map[string]interface{}{"mappings": mappings, "settings": settings}).Do(context.Background())
-
-	if err != nil {
-		panic(err)
+	fmt.Println("Ensuring that if the index exists we recreat it")
+	// Re-create the index
+	var res *esapi.Response
+	var err error
+	if res, err = i.conn.Indices.Delete([]string{i.name}, i.conn.Indices.Delete.WithIgnoreUnavailable(true)); err != nil || res.IsError() {
+		fmt.Println(fmt.Sprintf("Cannot delete index: %s", err))
+		return err
 	}
+	res.Body.Close()
+
+	// Define index mapping.
+	mapping := map[string]interface{}{"mappings": mappings, "settings": settings}
+	data, err := json.Marshal(mapping)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("Cannot encode index mapping %v: %s", mapping, err))
+		return err
+	}
+	res, err = i.conn.Indices.Create(i.name, i.conn.Indices.Create.WithBody(strings.NewReader(string(data))))
+	if err != nil {
+		fmt.Println(fmt.Sprintf("Cannot create index: %s", err))
+		return err
+	}
+	if res.IsError() {
+		fmt.Println(fmt.Sprintf("Cannot create index: %s", res))
+		return fmt.Errorf("Cannot create index: %s", res)
+	}
+	res.Body.Close()
 
 	return err
 }
 
 // Index indexes multiple documents
 func (i *Index) Index(docs []index.Document, opts interface{}) error {
-
-	blk := i.conn.Bulk()
+	var err error
 	for _, doc := range docs {
-		req := elastic.NewBulkIndexRequest().Index(i.name).Type("doc").Id(doc.Id).Doc(doc.Properties)
-		blk.Add(req)
+		data, err := json.Marshal(doc.Properties)
+		if err != nil {
+			return err
+		}
+		// Add an item to the BulkIndexer
+		err = i.bi.Add(
+			context.Background(),
+			esutil.BulkIndexerItem{
+				// Action field configures the operation to perform (index, create, delete, update)
+				Action: "index",
 
+				// DocumentID is the (optional) document ID
+				DocumentID: doc.Id,
+
+				// Body is an `io.Reader` with the payload
+				Body: bytes.NewReader(data),
+
+				// OnSuccess is called for each successful operation
+				OnSuccess: func(ctx context.Context, item esutil.BulkIndexerItem, res esutil.BulkIndexerResponseItem) {
+				},
+				// OnFailure is called for each failed operation
+				OnFailure: func(ctx context.Context, item esutil.BulkIndexerItem, res esutil.BulkIndexerResponseItem, err error) {
+					if err != nil {
+						fmt.Printf("ERROR BULK INSERT: %s", err)
+					} else {
+						fmt.Printf("ERROR BULK INSERT: %s: %s", res.Error.Type, res.Error.Reason)
+					}
+				},
+			},
+		)
+		if err != nil {
+			fmt.Println("Unexpected error while bulk inserting: %s", err)
+			return err
+		}
 	}
-	_, err := blk.Refresh("true").Do(context.Background())
-
-	if err != nil {
-		panic(err)
-	}
-
 	return err
 }
 
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
 func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
+	es := i.conn
+	// 3. Search for the indexed documents
+	//
+	// Build the request body.
+	var buf bytes.Buffer
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"match": map[string]interface{}{
+				"title": "test",
+				"from":  q.Paging.Offset,
+				"to":    q.Paging.Offset,
+			},
+		},
+	}
+	if err := json.NewEncoder(&buf).Encode(query); err != nil {
+		log.Fatalf("Error encoding query: %s", err)
+	}
+	var r map[string]interface{}
 
-	eq := elastic.NewQueryStringQuery(q.Term)
-	res, err := i.conn.Search(i.name).Type("doc").
-		Query(eq).
-		From(q.Paging.Offset).
-		Size(q.Paging.Num).
-		Do(context.Background())
-
+	// Perform the search request.
+	res, err := es.Search(
+		es.Search.WithContext(context.Background()),
+		es.Search.WithIndex(i.name),
+		es.Search.WithBody(&buf),
+		es.Search.WithTrackTotalHits(true))
 	if err != nil {
-		panic(err)
+		log.Fatalf("Error getting response: %s", err)
+	}
+	defer res.Body.Close()
+
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		log.Fatalf("Error parsing the response body: %s", err)
 	}
 
 	ret := make([]index.Document, 0, q.Paging.Num)
-	for _, h := range res.Hits.Hits {
-
-		if h != nil {
-			d := index.NewDocument(h.Id, float32(*h.Score))
-			if err := json.Unmarshal(*h.Source, &d.Properties); err == nil {
-				ret = append(ret, d)
-			}
-		}
-
+	hits := r["hits"].(map[string]interface{})["hits"].([]interface{})
+	for _, hit := range hits {
+		log.Printf(" * ID=%s, %s", hit.(map[string]interface{})["_id"], hit.(map[string]interface{})["_source"])
 	}
-
-	return ret, int(res.TotalHits()), err
+	return ret, len(hits), err
 }
 
 // Drop deletes the index
 func (i *Index) Drop() error {
-	i.conn.DeleteIndex(i.name).Do(context.Background())
-
-	return nil
+	// Re-create the index
+	var res *esapi.Response
+	var err error
+	if res, err = i.conn.Indices.Delete([]string{i.name}, i.conn.Indices.Delete.WithIgnoreUnavailable(true)); err != nil || res.IsError() {
+		fmt.Println(fmt.Sprintf("Cannot delete index: %s", err))
+		return err
+	}
+	res.Body.Close()
+	return err
 }
 
 // AddTerms add suggestion terms to the suggester index
 func (i *Index) AddTerms(terms ...index.Suggestion) error {
-	blk := i.conn.Bulk()
-
-	for _, term := range terms {
-		req := elastic.NewBulkIndexRequest().Index(i.name).Type("autocomplete").
-			Doc(map[string]interface{}{"sugg": term.Term})
-
-		blk.Add(req)
-
-	}
-	_, err := blk.Refresh("true").Do(context.Background())
-
-	return err
+	return nil
 
 }
 

@@ -6,3 +6,4 @@ bin/*
 *.xml
 *.gz
 .idea/*
+coverage.txt
