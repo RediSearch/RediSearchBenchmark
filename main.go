@@ -3,10 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"runtime"
@@ -106,6 +108,8 @@ func main() {
 	//scoreFile := flag.String("scores", "", "read scores of documents CSV for indexing")
 	engine := flag.String("engine", ENGINE_DEFAULT, fmt.Sprintf("The search backend to run. One of: [%s]", strings.Join([]string{ENGINE_REDIS, ENGINE_ELASTIC, ENGINE_SOLR}, "|")))
 	termsProperty := flag.String("terms-property", "body", "When we read the terms from the input file we read the text from the property specified in this option. If empty the default property field will be used. Default on 'enwiki' dataset = 'body'. Default on 'reddit' dataset = 'body'")
+	termQueryPrefixMinLen := flag.Int64("term-query-prefix-min-len", 3, "Minimum prefix length for the generated term queries.")
+	termQueryPrefixMaxLen := flag.Int64("term-query-prefix-max-len", 3, "Maximum prefix length for the generated term queries.")
 	totalTerms := flag.Int("distinct-terms", 100000, "When reading terms from input files how many terms should be read.")
 	randomSeed := flag.Int64("seed", 12345, "PRNG seed.")
 	termStopWords := flag.String("stopwords", defaultStopWords, "filtered stopwords for term creation")
@@ -114,7 +118,8 @@ func main() {
 	random := flag.Int("random", 0, "Generate random documents with terms like term0..term{N}")
 	indexesAmount := flag.Int("indexes", 1, "number of indexes to generate")
 	// fuzzy := flag.Bool("fuzzy", false, "For redis only - benchmark fuzzy auto suggest")
-	disableCache := flag.Bool("disableCache", false, "for elastic only, disabling query cache")
+	disableCache := flag.Bool("disableCache", false, "for elastic only. disabling query cache")
+	verbatimEnabled := flag.Bool("verbatim", false, "for redisearch only. does not try to use stemming for query expansion but searches the query terms verbatim.")
 	seconds := flag.Int("duration", 60, "number of seconds to run the benchmark")
 	temporary := flag.Int("temporary", -1, "for redisearch only, create a temporary index that will expire after the given amount of seconds, -1 mean no temporary")
 	conc := flag.Int("c", 4, "benchmark concurrency")
@@ -124,6 +129,7 @@ func main() {
 	cmdPrefix := flag.String("prefix", "FT", "Command prefix for FT module")
 	password := flag.String("password", "", "database password")
 	user := flag.String("user", "", "database username. If empty will use the default for each of the databases")
+	reportingPeriod := flag.Duration("reporting-period", 1*time.Second, "Period to report runtime stats")
 
 	flag.Parse()
 	rand.Seed(*randomSeed)
@@ -143,8 +149,10 @@ func main() {
 	var opts interface{}
 	var queries []string
 	var err error
+	log.Printf("Using a total of %d concurrent benchmark workers", *conc)
 
-	if *engine == "redis" {
+	if *engine == "redis" && *verbatimEnabled {
+		log.Println("Enabling VERBATIM mode on Search benchmarks.")
 		opts = query.QueryVerbatim
 	}
 	// select index to run
@@ -155,12 +163,12 @@ func main() {
 	}
 
 	if *qs == "" && *benchmark != "" {
-		fmt.Println("Using input file to produce terms for the benchmarks")
+		log.Println("Using input file to produce terms for the benchmarks")
 		if *dataset == EN_WIKI_DATASET {
 			wr := &ingest.WikipediaAbstractsReader{}
 			if *fileName != "" {
 				if queries, err = ingest.ReadTerms(*fileName, wr, indexes[0], 0, 10000, *totalTerms, *termsProperty, strings.Split(*termStopWords, ",")); err != nil {
-					panic(fmt.Sprintf("Failed on Term preparation due to %v", err))
+					log.Fatalf("Failed on Term preparation due to %v", err)
 				}
 			}
 		} else if *dataset == PMC_DATASET {
@@ -174,16 +182,18 @@ func main() {
 		panic("you've specified a benchmark but query terms are empty")
 	}
 	if *benchmark != "" {
-		fmt.Println(fmt.Sprintf("Using a total of %d distinct input terms for benchmark queries", len(queries)))
+		log.Println(fmt.Sprintf("Using a total of %d distinct input terms for benchmark queries", len(queries)))
 	}
-
-	// Search benchmark
-	if *benchmark == BENCHMARK_SEARCH {
+	w := new(tabwriter.Writer)
+	w.Init(os.Stderr, 20, 0, 0, ' ', tabwriter.AlignRight)
+	// wildcard benchmark
+	if *benchmark == BENCHMARK_PREFIX {
 		if *indexesAmount > 1 {
 			panic("search not supported on multiple indexes!!!")
 		}
-		name := fmt.Sprintf("search: %s", *qs)
-		Benchmark(*conc, duration, *engine, name, *outfile, SearchBenchmark(queries, indexes[0], opts))
+		name := fmt.Sprintf("prefix: %d terms", len(queries))
+		log.Println("Starting term-level queries benchmark: Type PREFIX")
+		Benchmark(*conc, duration, *engine, name, *outfile, *reportingPeriod, w, PrefixBenchmark(queries, indexes[0], *termQueryPrefixMinLen, *termQueryPrefixMaxLen))
 		os.Exit(0)
 	}
 
@@ -192,8 +202,9 @@ func main() {
 		if *indexesAmount > 1 {
 			panic("search not supported on multiple indexes!!!")
 		}
-		name := fmt.Sprintf("search: %s", *qs)
-		Benchmark(*conc, duration, *engine, name, *outfile, SearchBenchmark(queries, indexes[0], opts))
+		name := fmt.Sprintf("search: %d terms", len(queries))
+		log.Println("Starting full-text queries benchmark")
+		Benchmark(*conc, duration, *engine, name, *outfile, *reportingPeriod, w, SearchBenchmark(queries, indexes[0], opts))
 		os.Exit(0)
 	}
 
@@ -213,25 +224,7 @@ func main() {
 		}
 
 		N := 1000
-		gen := synth.NewDocumentGenerator(*random, map[string][2]int{"title": {5, 10}, "body": {10, 20}})
-		chunk := make([]index.Document, N)
-		n := 0
-		ch := make(chan index.Document, N)
-		go func() {
-			for i := 0; i < *maxDocPerIndex || *maxDocPerIndex == -1; i++ {
-				ch <- gen.Generate(0)
-			}
-		}()
-		for {
-
-			for i := 0; i < N; i++ {
-				chunk[i] = <-ch
-				n++
-			}
-
-			indexes[0].Index(chunk, nil)
-			fmt.Println(n)
-		}
+		generateRandomDocuments(random, N, maxDocPerIndex, indexes)
 
 	}
 	// ingest documents into the selected engine
@@ -289,4 +282,26 @@ func main() {
 	fmt.Fprintln(os.Stderr, "No benchmark or input file specified")
 	flag.Usage()
 	os.Exit(-1)
+}
+
+func generateRandomDocuments(random *int, N int, maxDocPerIndex *int, indexes []index.Index) {
+	gen := synth.NewDocumentGenerator(*random, map[string][2]int{"title": {5, 10}, "body": {10, 20}})
+	chunk := make([]index.Document, N)
+	n := 0
+	ch := make(chan index.Document, N)
+	go func() {
+		for i := 0; i < *maxDocPerIndex || *maxDocPerIndex == -1; i++ {
+			ch <- gen.Generate(0)
+		}
+	}()
+	for {
+
+		for i := 0; i < N; i++ {
+			chunk[i] = <-ch
+			n++
+		}
+
+		indexes[0].Index(chunk, nil)
+		fmt.Println(n)
+	}
 }

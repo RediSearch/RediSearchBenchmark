@@ -10,6 +10,7 @@ type Index interface {
 	GetName() string
 	Index(documents []Document, options interface{}) error
 	Search(query.Query) (docs []Document, total int, err error)
+	PrefixSearch(query.Query) (docs []Document, total int, err error)
 	Drop() error
 	Create() error
 }

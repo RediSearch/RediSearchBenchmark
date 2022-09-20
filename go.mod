@@ -9,6 +9,7 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/vanng822/go-solr v0.10.0
 	golang.org/x/exp v0.0.0-20220916125017-b168a2c6b86b
+	code.cloudfoundry.org/bytefmt v0.0.0-20200131002437-cf55d5288a48
 )
 
 require (

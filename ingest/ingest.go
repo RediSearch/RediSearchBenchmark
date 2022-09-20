@@ -160,7 +160,7 @@ func ReadDir(dirName string, pattern string, r DocumentReader, idx index.Index, 
 
 		}
 	}
-	fmt.Println("Done!")
+	log.Println("Done!")
 }
 
 // IngestDocuments ingests documents into an index using a DocumentReader

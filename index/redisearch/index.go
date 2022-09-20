@@ -241,16 +241,23 @@ func loadDocument(id, sc, fields interface{}) (index.Document, error) {
 	return doc, nil
 }
 
+func (i *Index) PrefixSearch(q query.Query) (docs []index.Document, total int, err error) {
+	return i.Search(q)
+}
+
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
 func (i *Index) Search(q query.Query) (docs []index.Document, total int, err error) {
 	conn := i.getConn()
 	defer conn.Close()
-
-	args := redis.Args{i.name, q.Term, "LIMIT", q.Paging.Offset, q.Paging.Num, "WITHSCORES"}
-	//if q.Flags&query.QueryVerbatim != 0 {
-	args = append(args, "VERBATIM")
-	//}
+	term := q.Term
+	if q.Flags&query.QueryTypePrefix != 0 && term[len(term)-1] != '*' {
+		term = fmt.Sprintf("%s*", term)
+	}
+	args := redis.Args{i.name, term, "LIMIT", q.Paging.Offset, q.Paging.Num, "WITHSCORES"}
+	if q.Flags&query.QueryVerbatim != 0 {
+		args = append(args, "VERBATIM")
+	}
 	if q.Flags&query.QueryNoContent != 0 {
 		args = append(args, "NOCONTENT")
 	}

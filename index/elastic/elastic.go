@@ -239,6 +239,53 @@ func (i *Index) Index(docs []index.Document, opts interface{}) error {
 
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
+func (i *Index) PrefixSearch(q query.Query) ([]index.Document, int, error) {
+	es := i.conn
+	// 3. Search for the indexed documents
+	//
+	// Build the request body.
+	var buf bytes.Buffer
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"prefix": map[string]interface{}{
+				"title": map[string]interface{}{
+					"value": q.Term,
+				},
+				"from": q.Paging.Offset,
+				"to":   q.Paging.Offset,
+			},
+		},
+	}
+	if err := json.NewEncoder(&buf).Encode(query); err != nil {
+		log.Fatalf("Error encoding query: %s", err)
+	}
+	var r map[string]interface{}
+
+	// Perform the search request.
+	res, err := es.Search(
+		es.Search.WithContext(context.Background()),
+		es.Search.WithIndex(i.name),
+		es.Search.WithBody(&buf),
+		es.Search.WithTrackTotalHits(true))
+	if err != nil {
+		log.Fatalf("Error getting response: %s", err)
+	}
+	defer res.Body.Close()
+
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		log.Fatalf("Error parsing the response body: %s", err)
+	}
+
+	ret := make([]index.Document, 0, q.Paging.Num)
+	hits := r["hits"].(map[string]interface{})["hits"].([]interface{})
+	for _, hit := range hits {
+		log.Printf(" * ID=%s, %s", hit.(map[string]interface{})["_id"], hit.(map[string]interface{})["_source"])
+	}
+	return ret, len(hits), err
+}
+
+// Search searches the index for the given query, and returns documents,
+// the total number of results, or an error if something went wrong
 func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 	es := i.conn
 	// 3. Search for the indexed documents
@@ -248,7 +295,7 @@ func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 	query := map[string]interface{}{
 		"query": map[string]interface{}{
 			"match": map[string]interface{}{
-				"title": "test",
+				"title": q.Term,
 				"from":  q.Paging.Offset,
 				"to":    q.Paging.Offset,
 			},
