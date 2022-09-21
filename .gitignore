@@ -3,6 +3,7 @@
 RediSearchBenchmark
 bin/*
 *.csv
+*.json
 *.xml
 *.gz
 .idea/*

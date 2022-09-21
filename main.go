@@ -65,6 +65,9 @@ const ENGINE_ELASTIC = "elastic"
 const ENGINE_SOLR = "solr"
 const ENGINE_DEFAULT = ENGINE_REDIS
 
+// this mutex does not affect any of the client go-routines ( it's only to sync between main thread and datapoints processer go-routines )
+var histogramMutex sync.Mutex
+
 var indexMetadata = index.NewMetadata().
 	AddField(index.NewTextField("body", 1)).
 	AddField(index.NewTextField("title", 5)).
@@ -125,7 +128,7 @@ func main() {
 	conc := flag.Int("c", 4, "benchmark concurrency")
 	maxDocPerIndex := flag.Int("maxdocs", -1, "specify the numebr of max docs per index, -1 for no limit")
 	qs := flag.String("queries", "", "comma separated list of queries to benchmark. Use this option only for the historical reasons via `-queries='barack obama'`. If you don't specify a value it will read the input file and randomize the input search terms")
-	outfile := flag.String("o", "benchmark.csv", "results output file. set to - for stdout")
+	outfile := flag.String("o", "benchmark.json", "results output file. set to - for stdout")
 	cmdPrefix := flag.String("prefix", "FT", "Command prefix for FT module")
 	password := flag.String("password", "", "database password")
 	user := flag.String("user", "", "database username. If empty will use the default for each of the databases")
@@ -193,7 +196,7 @@ func main() {
 		}
 		name := fmt.Sprintf("prefix: %d terms", len(queries))
 		log.Println("Starting term-level queries benchmark: Type PREFIX")
-		Benchmark(*conc, duration, *engine, name, *outfile, *reportingPeriod, w, PrefixBenchmark(queries, indexes[0], *termQueryPrefixMinLen, *termQueryPrefixMaxLen))
+		Benchmark(*conc, duration, &histogramMutex, *engine, name, *outfile, *reportingPeriod, w, PrefixBenchmark(queries, indexes[0], *termQueryPrefixMinLen, *termQueryPrefixMaxLen))
 		os.Exit(0)
 	}
 
@@ -204,7 +207,7 @@ func main() {
 		}
 		name := fmt.Sprintf("search: %d terms", len(queries))
 		log.Println("Starting full-text queries benchmark")
-		Benchmark(*conc, duration, *engine, name, *outfile, *reportingPeriod, w, SearchBenchmark(queries, indexes[0], opts))
+		Benchmark(*conc, duration, &histogramMutex, *engine, name, *outfile, *reportingPeriod, w, SearchBenchmark(queries, indexes[0], opts))
 		os.Exit(0)
 	}
 

@@ -237,8 +237,7 @@ func (i *Index) Index(docs []index.Document, opts interface{}) error {
 	return err
 }
 
-// Search searches the index for the given query, and returns documents,
-// the total number of results, or an error if something went wrong
+// Reference: https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-prefix-query.html
 func (i *Index) PrefixSearch(q query.Query) ([]index.Document, int, error) {
 	es := i.conn
 	// 3. Search for the indexed documents
