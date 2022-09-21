@@ -143,12 +143,11 @@ func (i *DistributedIndex) Search(q query.Query) (docs []index.Document, total i
 		tg.Submit(
 			func(v interface{}) interface{} {
 				sub := v.(index.Index)
-				res, total, err := sub.Search(q)
+				res, total, err := sub.Search(q, 0)
 				return searchResult{res, total, err}
 			},
 			i.partitions[n])
 	}
-
 	results, err := tg.Wait(i.timeout)
 
 	docs, total = i.mergeResults(results, offset, q.Paging.Num)

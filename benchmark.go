@@ -29,11 +29,11 @@ var totalHistogram *hdrhistogram.Histogram
 
 // SearchBenchmark returns a closure of a function for the benchmarker to run, using a given index
 // and options, on a set of queries
-func SearchBenchmark(queries []string, idx index.Index, opts interface{}) func() error {
+func SearchBenchmark(queries []string, field string, idx index.Index, opts interface{}, debug int) func() error {
 	counter := 0
 	return func() error {
-		q := query.NewQuery(idx.GetName(), queries[counter%len(queries)]).Limit(0, 5)
-		_, _, err := idx.Search(*q)
+		q := query.NewQuery(idx.GetName(), queries[counter%len(queries)]).Limit(0, 5).SetField(field)
+		_, _, err := idx.Search(*q, debug)
 		counter++
 		return err
 	}
@@ -41,7 +41,7 @@ func SearchBenchmark(queries []string, idx index.Index, opts interface{}) func()
 
 // SearchBenchmark returns a closure of a function for the benchmarker to run, using a given index
 // and options, on a set of queries
-func PrefixBenchmark(terms []string, idx index.Index, prefixMinLen, prefixMaxLen int64) func() error {
+func PrefixBenchmark(terms []string, field string, idx index.Index, prefixMinLen, prefixMaxLen int64, debug int) func() error {
 	counter := 0
 	fixedPrefixSize := false
 	if prefixMinLen == prefixMaxLen {
@@ -59,8 +59,8 @@ func PrefixBenchmark(terms []string, idx index.Index, prefixMinLen, prefixMaxLen
 			term = terms[counter%len(terms)]
 		}
 		term = term[0:prefixSize]
-		q := query.NewQuery(idx.GetName(), term).Limit(0, 5).SetFlags(query.QueryTypePrefix)
-		_, _, err := idx.PrefixSearch(*q)
+		q := query.NewQuery(idx.GetName(), term).Limit(0, 5).SetFlags(query.QueryTypePrefix).SetField(field)
+		_, _, err := idx.PrefixSearch(*q, debug)
 		counter++
 		return err
 	}

@@ -70,7 +70,26 @@ func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, use
 		return nil, err
 	}
 	fmt.Println("Connected to elastic!")
-	fmt.Println(es.Info())
+	// 1. Get cluster info
+	var r map[string]interface{}
+	log.Println(strings.Repeat("~", 60))
+
+	res, err := es.Info()
+	if err != nil {
+		log.Fatalf("Error getting response: %s", err)
+	}
+	defer res.Body.Close()
+	// Check response status
+	if res.IsError() {
+		log.Fatalf("Error: %s", res.String())
+	}
+	// Deserialize the response into a map.
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		log.Fatalf("Error parsing the response body: %s", err)
+	}
+	// Print client and server version numbers.
+	log.Printf("Server: %s", r["version"].(map[string]interface{})["number"])
+	log.Println(strings.Repeat("~", 60))
 
 	// Create the BulkIndexer
 	bulkIndexerFlushIntervalSecondsPropDefault := 30
@@ -134,34 +153,18 @@ func (i *Index) GetName() string {
 // Create creates the index and posts a mapping corresponding to our Metadata
 func (i *Index) Create() error {
 
-	doc := mapping{Properties: map[string]mappingProperty{}}
+	mappings := mapping{Properties: map[string]mappingProperty{}}
 	for _, f := range i.md.Fields {
-		doc.Properties[f.Name] = mappingProperty{}
+		mappings.Properties[f.Name] = mappingProperty{}
 		fs, err := fieldTypeString(f.Type)
 		if err != nil {
 			return err
 		}
-		doc.Properties[f.Name]["type"] = fs
-	}
-
-	// we currently manually create the autocomplete mapping
-	// ac := mapping{
-	// 	Properties: map[string]mappingProperty{
-	// 		"sugg": mappingProperty{
-	// 			"type":     "completion",
-	// 			"payloads": true,
-	// 		},
-	// 	},
-	// }
-
-	mappings := map[string]mapping{
-		i.typ: doc,
-		// "autocomplete": ac,
+		mappings.Properties[f.Name]["type"] = fs
 	}
 
 	settings := map[string]interface{}{
 		"index.requests.cache.enable": !i.disableCache,
-		// "autocomplete": ac,
 	}
 
 	fmt.Println("Ensuring that if the index exists we recreat it")
@@ -173,7 +176,6 @@ func (i *Index) Create() error {
 		return err
 	}
 	res.Body.Close()
-
 	// Define index mapping.
 	mapping := map[string]interface{}{"mappings": mappings, "settings": settings}
 	data, err := json.Marshal(mapping)
@@ -238,20 +240,20 @@ func (i *Index) Index(docs []index.Document, opts interface{}) error {
 }
 
 // Reference: https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-prefix-query.html
-func (i *Index) PrefixSearch(q query.Query) ([]index.Document, int, error) {
+func (i *Index) PrefixSearch(q query.Query, verbose int) ([]index.Document, int, error) {
 	es := i.conn
 	// 3. Search for the indexed documents
 	//
 	// Build the request body.
 	var buf bytes.Buffer
 	query := map[string]interface{}{
+		"from": q.Paging.Offset,
+		"size": q.Paging.Num,
 		"query": map[string]interface{}{
 			"prefix": map[string]interface{}{
-				"title": map[string]interface{}{
+				q.Field: map[string]interface{}{
 					"value": q.Term,
 				},
-				"from": q.Paging.Offset,
-				"to":   q.Paging.Offset,
 			},
 		},
 	}
@@ -270,33 +272,55 @@ func (i *Index) PrefixSearch(q query.Query) ([]index.Document, int, error) {
 		log.Fatalf("Error getting response: %s", err)
 	}
 	defer res.Body.Close()
+	hits := elasticParseResponse(r, verbose, res, query)
+	return nil, hits, err
+}
 
+func elasticParseResponse(r map[string]interface{}, verbose int, res *esapi.Response, query map[string]interface{}) int {
+	if res.IsError() {
+		var e map[string]interface{}
+		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
+			log.Fatalf("Error parsing the response body: %s", err)
+		} else {
+			// Print the response status and error information.
+			log.Fatalf("[%s] %s: %s",
+				res.Status(),
+				e["error"].(map[string]interface{})["type"],
+				e["error"].(map[string]interface{})["reason"],
+			)
+		}
+	}
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
 		log.Fatalf("Error parsing the response body: %s", err)
 	}
-
-	ret := make([]index.Document, 0, q.Paging.Num)
-	hits := r["hits"].(map[string]interface{})["hits"].([]interface{})
-	for _, hit := range hits {
-		log.Printf(" * ID=%s, %s", hit.(map[string]interface{})["_id"], hit.(map[string]interface{})["_source"])
+	// Print the response status, number of results, and request duration.
+	hits := int(r["hits"].(map[string]interface{})["total"].(map[string]interface{})["value"].(float64))
+	if verbose > 1 {
+		log.Printf(
+			"query %v. [%s] %d hits; took: %dms",
+			query,
+			res.Status(), hits,
+			int(r["took"].(float64)),
+		)
 	}
-	return ret, len(hits), err
+	return hits
 }
 
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
-func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
+// https://www.elastic.co/guide/en/elasticsearch/reference/current/full-text-queries.html
+func (i *Index) Search(q query.Query, verbose int) ([]index.Document, int, error) {
 	es := i.conn
 	// 3. Search for the indexed documents
 	//
 	// Build the request body.
 	var buf bytes.Buffer
 	query := map[string]interface{}{
+		"from": q.Paging.Offset,
+		"size": q.Paging.Num,
 		"query": map[string]interface{}{
 			"match": map[string]interface{}{
-				"title": q.Term,
-				"from":  q.Paging.Offset,
-				"to":    q.Paging.Offset,
+				q.Field: q.Term,
 			},
 		},
 	}
@@ -315,17 +339,8 @@ func (i *Index) Search(q query.Query) ([]index.Document, int, error) {
 		log.Fatalf("Error getting response: %s", err)
 	}
 	defer res.Body.Close()
-
-	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
-		log.Fatalf("Error parsing the response body: %s", err)
-	}
-
-	ret := make([]index.Document, 0, q.Paging.Num)
-	hits := r["hits"].(map[string]interface{})["hits"].([]interface{})
-	for _, hit := range hits {
-		log.Printf(" * ID=%s, %s", hit.(map[string]interface{})["_id"], hit.(map[string]interface{})["_source"])
-	}
-	return ret, len(hits), err
+	hits := elasticParseResponse(r, verbose, res, query)
+	return nil, hits, err
 }
 
 // Drop deletes the index

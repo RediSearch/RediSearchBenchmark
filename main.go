@@ -56,6 +56,7 @@ const PMC_DATASET = "pmc"
 const REDDIT_DATASET = "reddit"
 const DEFAULT_DATASET = EN_WIKI_DATASET
 const BENCHMARK_SEARCH = "search"
+const BENCHMARK_SEARCH_MULTIMATCH = "search:multi_match"
 const BENCHMARK_PREFIX = "prefix"
 const BENCHMARK_WILDCARD = "wildcard"
 const BENCHMARK_SUGGEST = "suggest"
@@ -77,19 +78,18 @@ var indexMetadata = index.NewMetadata().
 func selectIndex(engine string, hosts []string, user, pass string, temporary int, disableCache bool, name string, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
-	case "redis":
+	case ENGINE_REDIS:
 		indexMetadata.Options = redisearch.IndexingOptions{Prefix: cmdPrefix}
 		idx := redisearch.NewIndex(hosts, pass, temporary, name, indexMetadata)
 		ac := redisearch.NewAutocompleter(hosts[0], "ac")
 		return idx, ac, query.QueryVerbatim
-
-	case "elastic":
+	case ENGINE_ELASTIC:
 		idx, err := elastic.NewIndex(hosts[0], name, "doc", disableCache, indexMetadata, user, pass)
 		if err != nil {
 			panic(err)
 		}
 		return idx, idx, 0
-	case "solr":
+	case ENGINE_SOLR:
 		idx, err := solr.NewIndex(hosts[0], name, indexMetadata)
 		if err != nil {
 			panic(err)
@@ -107,32 +107,41 @@ func main() {
 	fileName := flag.String("file", "", "Input file to ingest data from (wikipedia abstracts)")
 	dirName := flag.String("dir", "", "Recursively read all files in a directory")
 	fileMatch := flag.String("match", ".*", "When reading directories, match only files with this glob")
-
-	//scoreFile := flag.String("scores", "", "read scores of documents CSV for indexing")
 	engine := flag.String("engine", ENGINE_DEFAULT, fmt.Sprintf("The search backend to run. One of: [%s]", strings.Join([]string{ENGINE_REDIS, ENGINE_ELASTIC, ENGINE_SOLR}, "|")))
 	termsProperty := flag.String("terms-property", "body", "When we read the terms from the input file we read the text from the property specified in this option. If empty the default property field will be used. Default on 'enwiki' dataset = 'body'. Default on 'reddit' dataset = 'body'")
 	termQueryPrefixMinLen := flag.Int64("term-query-prefix-min-len", 3, "Minimum prefix length for the generated term queries.")
 	termQueryPrefixMaxLen := flag.Int64("term-query-prefix-max-len", 3, "Maximum prefix length for the generated term queries.")
 	totalTerms := flag.Int("distinct-terms", 100000, "When reading terms from input files how many terms should be read.")
+	queryField := flag.String("benchmark-query-fieldname", "", "fieldname to use for search|prefix|wildcard benchmarks. If empty will use the default per dataset.")
 	randomSeed := flag.Int64("seed", 12345, "PRNG seed.")
 	termStopWords := flag.String("stopwords", defaultStopWords, "filtered stopwords for term creation")
 	dataset := flag.String("dataset", DEFAULT_DATASET, fmt.Sprintf("The dataset tp process. One of: [%s]", strings.Join([]string{EN_WIKI_DATASET, REDDIT_DATASET, PMC_DATASET}, "|")))
 	benchmark := flag.String("benchmark", "", fmt.Sprintf("The benchmark to run. One of: [%s]. If empty will not run.", strings.Join([]string{BENCHMARK_SEARCH, BENCHMARK_PREFIX, BENCHMARK_WILDCARD}, "|")))
 	random := flag.Int("random", 0, "Generate random documents with terms like term0..term{N}")
 	indexesAmount := flag.Int("indexes", 1, "number of indexes to generate")
-	// fuzzy := flag.Bool("fuzzy", false, "For redis only - benchmark fuzzy auto suggest")
 	disableCache := flag.Bool("disableCache", false, "for elastic only. disabling query cache")
 	verbatimEnabled := flag.Bool("verbatim", false, "for redisearch only. does not try to use stemming for query expansion but searches the query terms verbatim.")
 	seconds := flag.Int("duration", 60, "number of seconds to run the benchmark")
 	temporary := flag.Int("temporary", -1, "for redisearch only, create a temporary index that will expire after the given amount of seconds, -1 mean no temporary")
 	conc := flag.Int("c", 4, "benchmark concurrency")
-	maxDocPerIndex := flag.Int("maxdocs", -1, "specify the numebr of max docs per index, -1 for no limit")
+	debugLevel := flag.Int("debug-level", 0, "print debug info according to debug level. If 0 disabled.")
+	maxDocPerIndex := flag.Int("maxdocs", -1, "specify the number of max docs per index, -1 for no limit")
 	qs := flag.String("queries", "", "comma separated list of queries to benchmark. Use this option only for the historical reasons via `-queries='barack obama'`. If you don't specify a value it will read the input file and randomize the input search terms")
 	outfile := flag.String("o", "benchmark.json", "results output file. set to - for stdout")
 	cmdPrefix := flag.String("prefix", "FT", "Command prefix for FT module")
 	password := flag.String("password", "", "database password")
 	user := flag.String("user", "", "database username. If empty will use the default for each of the databases")
 	reportingPeriod := flag.Duration("reporting-period", 1*time.Second, "Period to report runtime stats")
+
+	benchmarkQueryField := *queryField
+	if benchmarkQueryField == "" {
+		switch *dataset {
+		case EN_WIKI_DATASET:
+			benchmarkQueryField = "body"
+		case PMC_DATASET:
+			panic("not implemented!!")
+		}
+	}
 
 	flag.Parse()
 	rand.Seed(*randomSeed)
@@ -141,9 +150,9 @@ func main() {
 	if len(servers) == 0 {
 		panic("No servers given")
 	}
-	username := ""
-	if *user == "" {
-		if *engine == "elastic" {
+	username := *user
+	if username == "" {
+		if (*engine) == ENGINE_ELASTIC {
 			username = "elastic"
 		}
 	}
@@ -196,7 +205,7 @@ func main() {
 		}
 		name := fmt.Sprintf("prefix: %d terms", len(queries))
 		log.Println("Starting term-level queries benchmark: Type PREFIX")
-		Benchmark(*conc, duration, &histogramMutex, *engine, name, *outfile, *reportingPeriod, w, PrefixBenchmark(queries, indexes[0], *termQueryPrefixMinLen, *termQueryPrefixMaxLen))
+		Benchmark(*conc, duration, &histogramMutex, *engine, name, *outfile, *reportingPeriod, w, PrefixBenchmark(queries, benchmarkQueryField, indexes[0], *termQueryPrefixMinLen, *termQueryPrefixMaxLen, *debugLevel))
 		os.Exit(0)
 	}
 
@@ -207,7 +216,7 @@ func main() {
 		}
 		name := fmt.Sprintf("search: %d terms", len(queries))
 		log.Println("Starting full-text queries benchmark")
-		Benchmark(*conc, duration, &histogramMutex, *engine, name, *outfile, *reportingPeriod, w, SearchBenchmark(queries, indexes[0], opts))
+		Benchmark(*conc, duration, &histogramMutex, *engine, name, *outfile, *reportingPeriod, w, SearchBenchmark(queries, benchmarkQueryField, indexes[0], opts, *debugLevel))
 		os.Exit(0)
 	}
 

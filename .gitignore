@@ -8,3 +8,5 @@ bin/*
 *.gz
 .idea/*
 coverage.txt
+*.txt
+

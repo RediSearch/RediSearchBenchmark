@@ -3,6 +3,7 @@ package redisearch
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -241,26 +242,30 @@ func loadDocument(id, sc, fields interface{}) (index.Document, error) {
 	return doc, nil
 }
 
-func (i *Index) PrefixSearch(q query.Query) (docs []index.Document, total int, err error) {
-	return i.Search(q)
+func (i *Index) PrefixSearch(q query.Query, verbose int) (docs []index.Document, total int, err error) {
+	return i.Search(q, verbose)
 }
 
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
-func (i *Index) Search(q query.Query) (docs []index.Document, total int, err error) {
+func (i *Index) Search(q query.Query, verbose int) (docs []index.Document, total int, err error) {
 	conn := i.getConn()
 	defer conn.Close()
 	term := q.Term
 	if q.Flags&query.QueryTypePrefix != 0 && term[len(term)-1] != '*' {
 		term = fmt.Sprintf("%s*", term)
 	}
-	args := redis.Args{i.name, term, "LIMIT", q.Paging.Offset, q.Paging.Num, "WITHSCORES"}
-	if q.Flags&query.QueryVerbatim != 0 {
-		args = append(args, "VERBATIM")
+	queryParam := term
+	if q.Field != "" {
+		queryParam = fmt.Sprintf("@%s:%s", q.Field, term)
 	}
-	if q.Flags&query.QueryNoContent != 0 {
-		args = append(args, "NOCONTENT")
-	}
+	args := redis.Args{i.name, queryParam, "LIMIT", q.Paging.Offset, q.Paging.Num, "WITHSCORES"}
+	//if q.Flags&query.QueryVerbatim != 0 {
+	//	args = append(args, "VERBATIM")
+	//}
+	//if q.Flags&query.QueryNoContent != 0 {
+	//	args = append(args, "NOCONTENT")
+	//}
 
 	if q.HighlightOpts != nil {
 		args = args.Add("HIGHLIGHT")
@@ -308,26 +313,14 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 	if total, err = redis.Int(res[0], nil); err != nil {
 		return nil, 0, err
 	}
-
-	docs = make([]index.Document, 0, len(res)-1)
-
-	if len(res) > 2 {
-		for i := 1; i < len(res); i += 2 {
-
-			var fields interface{} = []interface{}{}
-			if q.Flags&query.QueryNoContent == 0 {
-				fields = res[i+2]
-
-			}
-			if d, e := loadDocument(res[i], res[i+1], fields); e == nil {
-				docs = append(docs, d)
-			}
-			if q.Flags&query.QueryNoContent == 0 {
-				i++
-			}
-		}
+	if verbose > 1 {
+		log.Printf(
+			"query %v. %d hits",
+			args,
+			total,
+		)
 	}
-	return docs, len(docs), nil
+	return nil, total, nil
 }
 
 func (i *Index) Drop() error {

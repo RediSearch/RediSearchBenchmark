@@ -34,6 +34,7 @@ type SummaryOptions struct {
 type Query struct {
 	Index      string
 	Term       string
+	Field      string
 	Predicates []Predicate
 	Paging     Paging
 	Flags      Flag
@@ -108,5 +109,10 @@ func (q *Query) Summarize(fields ...string) *Query {
 // This function accepts advanced settings for snippet length, separators and number of snippets
 func (q *Query) SummarizeOptions(opts SummaryOptions) *Query {
 	q.SummarizeOpts = &opts
+	return q
+}
+
+func (q *Query) SetField(field string) *Query {
+	q.Field = field
 	return q
 }
