@@ -242,13 +242,17 @@ func loadDocument(id, sc, fields interface{}) (index.Document, error) {
 	return doc, nil
 }
 
-func (i *Index) PrefixSearch(q query.Query, verbose int) (docs []index.Document, total int, err error) {
-	return i.Search(q, verbose)
+func (i *Index) PrefixQuery(q query.Query, verbose int) (docs []index.Document, total int, err error) {
+	return i.FullTextQuerySingleField(q, verbose)
+}
+
+func (i *Index) WildCardQuery(q query.Query, verbose int) (docs []index.Document, total int, err error) {
+	return i.FullTextQuerySingleField(q, verbose)
 }
 
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
-func (i *Index) Search(q query.Query, verbose int) (docs []index.Document, total int, err error) {
+func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) (docs []index.Document, total int, err error) {
 	conn := i.getConn()
 	defer conn.Close()
 	term := q.Term

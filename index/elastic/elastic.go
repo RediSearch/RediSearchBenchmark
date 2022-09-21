@@ -240,12 +240,8 @@ func (i *Index) Index(docs []index.Document, opts interface{}) error {
 }
 
 // Reference: https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-prefix-query.html
-func (i *Index) PrefixSearch(q query.Query, verbose int) ([]index.Document, int, error) {
+func (i *Index) PrefixQuery(q query.Query, verbose int) ([]index.Document, int, error) {
 	es := i.conn
-	// 3. Search for the indexed documents
-	//
-	// Build the request body.
-	var buf bytes.Buffer
 	query := map[string]interface{}{
 		"from": q.Paging.Offset,
 		"size": q.Paging.Num,
@@ -257,6 +253,13 @@ func (i *Index) PrefixSearch(q query.Query, verbose int) ([]index.Document, int,
 			},
 		},
 	}
+	err, hits := elasticSearchQuery(i.name, es, verbose, query)
+	return nil, hits, err
+}
+
+func elasticSearchQuery(indexName string, es *elastic.Client, verbose int, query map[string]interface{}) (error, int) {
+	// Build the request body.
+	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(query); err != nil {
 		log.Fatalf("Error encoding query: %s", err)
 	}
@@ -265,7 +268,7 @@ func (i *Index) PrefixSearch(q query.Query, verbose int) ([]index.Document, int,
 	// Perform the search request.
 	res, err := es.Search(
 		es.Search.WithContext(context.Background()),
-		es.Search.WithIndex(i.name),
+		es.Search.WithIndex(indexName),
 		es.Search.WithBody(&buf),
 		es.Search.WithTrackTotalHits(true))
 	if err != nil {
@@ -273,7 +276,7 @@ func (i *Index) PrefixSearch(q query.Query, verbose int) ([]index.Document, int,
 	}
 	defer res.Body.Close()
 	hits := elasticParseResponse(r, verbose, res, query)
-	return nil, hits, err
+	return err, hits
 }
 
 func elasticParseResponse(r map[string]interface{}, verbose int, res *esapi.Response, query map[string]interface{}) int {
@@ -306,15 +309,29 @@ func elasticParseResponse(r map[string]interface{}, verbose int, res *esapi.Resp
 	return hits
 }
 
+// https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-wildcard-query.html
+func (i *Index) WildCardQuery(q query.Query, verbose int) ([]index.Document, int, error) {
+	es := i.conn
+	query := map[string]interface{}{
+		"from": q.Paging.Offset,
+		"size": q.Paging.Num,
+		"query": map[string]interface{}{
+			"wildcard": map[string]interface{}{
+				q.Field: map[string]interface{}{
+					"value": q.Term,
+				},
+			},
+		},
+	}
+	err, hits := elasticSearchQuery(i.name, es, verbose, query)
+	return nil, hits, err
+}
+
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
 // https://www.elastic.co/guide/en/elasticsearch/reference/current/full-text-queries.html
-func (i *Index) Search(q query.Query, verbose int) ([]index.Document, int, error) {
-	es := i.conn
-	// 3. Search for the indexed documents
-	//
-	// Build the request body.
-	var buf bytes.Buffer
+func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) ([]index.Document, int, error) {
+
 	query := map[string]interface{}{
 		"from": q.Paging.Offset,
 		"size": q.Paging.Num,
@@ -324,22 +341,10 @@ func (i *Index) Search(q query.Query, verbose int) ([]index.Document, int, error
 			},
 		},
 	}
-	if err := json.NewEncoder(&buf).Encode(query); err != nil {
-		log.Fatalf("Error encoding query: %s", err)
-	}
-	var r map[string]interface{}
 
-	// Perform the search request.
-	res, err := es.Search(
-		es.Search.WithContext(context.Background()),
-		es.Search.WithIndex(i.name),
-		es.Search.WithBody(&buf),
-		es.Search.WithTrackTotalHits(true))
-	if err != nil {
-		log.Fatalf("Error getting response: %s", err)
-	}
-	defer res.Body.Close()
-	hits := elasticParseResponse(r, verbose, res, query)
+	es := i.conn
+
+	err, hits := elasticSearchQuery(i.name, es, verbose, query)
 	return nil, hits, err
 }
 

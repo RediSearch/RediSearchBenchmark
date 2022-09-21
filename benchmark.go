@@ -33,7 +33,7 @@ func SearchBenchmark(queries []string, field string, idx index.Index, opts inter
 	counter := 0
 	return func() error {
 		q := query.NewQuery(idx.GetName(), queries[counter%len(queries)]).Limit(0, 5).SetField(field)
-		_, _, err := idx.Search(*q, debug)
+		_, _, err := idx.FullTextQuerySingleField(*q, debug)
 		counter++
 		return err
 	}
@@ -60,7 +60,34 @@ func PrefixBenchmark(terms []string, field string, idx index.Index, prefixMinLen
 		}
 		term = term[0:prefixSize]
 		q := query.NewQuery(idx.GetName(), term).Limit(0, 5).SetFlags(query.QueryTypePrefix).SetField(field)
-		_, _, err := idx.PrefixSearch(*q, debug)
+		_, _, err := idx.PrefixQuery(*q, debug)
+		counter++
+		return err
+	}
+}
+
+// SearchBenchmark returns a closure of a function for the benchmarker to run, using a given index
+// and options, on a set of queries
+func WildcardBenchmark(terms []string, field string, idx index.Index, prefixMinLen, prefixMaxLen int64, debug int) func() error {
+	counter := 0
+	fixedPrefixSize := false
+	if prefixMinLen == prefixMaxLen {
+		fixedPrefixSize = true
+	}
+	return func() error {
+		term := terms[counter%len(terms)]
+		var prefixSize int64 = prefixMinLen
+		if !fixedPrefixSize {
+			n := rand.Int63n(int64(prefixMaxLen - prefixMinLen))
+			prefixSize = prefixSize + n
+		}
+		for prefixSize > int64(len(term)) {
+			counter++
+			term = terms[counter%len(terms)]
+		}
+		term = term[0:prefixSize]
+		q := query.NewQuery(idx.GetName(), term).Limit(0, 5).SetFlags(query.QueryTypePrefix).SetField(field)
+		_, _, err := idx.WildCardQuery(*q, debug)
 		counter++
 		return err
 	}

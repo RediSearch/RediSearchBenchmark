@@ -56,14 +56,21 @@ func (i *Index) Index(documents []index.Document, options interface{}) error {
 
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
-func (i *Index) PrefixSearch(q query.Query, verbose int) (docs []index.Document, total int, err error) {
+func (i *Index) PrefixQuery(q query.Query, verbose int) (docs []index.Document, total int, err error) {
 	panic("not implemented")
 
 }
 
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
-func (i *Index) Search(q query.Query, verbose int) (docs []index.Document, total int, err error) {
+func (i *Index) WildCardQuery(q query.Query, verbose int) (docs []index.Document, total int, err error) {
+	panic("not implemented")
+
+}
+
+// Search searches the index for the given query, and returns documents,
+// the total number of results, or an error if something went wrong
+func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) (docs []index.Document, total int, err error) {
 	query := solr.NewQuery()
 	query.Q(q.Term)
 	query.AddParam("cache", "false")

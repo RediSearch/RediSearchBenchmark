@@ -164,7 +164,7 @@ func main() {
 	log.Printf("Using a total of %d concurrent benchmark workers", *conc)
 
 	if *engine == "redis" && *verbatimEnabled {
-		log.Println("Enabling VERBATIM mode on Search benchmarks.")
+		log.Println("Enabling VERBATIM mode on FullTextQuerySingleField benchmarks.")
 		opts = query.QueryVerbatim
 	}
 	// select index to run
@@ -209,7 +209,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Search benchmark
+	// FullTextQuerySingleField benchmark
 	if *benchmark == BENCHMARK_SEARCH {
 		if *indexesAmount > 1 {
 			panic("search not supported on multiple indexes!!!")

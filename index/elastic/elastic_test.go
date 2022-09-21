@@ -34,7 +34,7 @@ func TestIndex(t *testing.T) {
 	assert.NoError(t, idx.Index(docs, nil))
 
 	q := query.NewQuery("doc", "hello world")
-	docs, total, err := idx.Search(*q)
+	docs, total, err := idx.FullTextQuerySingleField(*q)
 
 	t.Log(docs, total, err)
 	assert.NoError(t, err)
