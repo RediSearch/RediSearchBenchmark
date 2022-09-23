@@ -2,7 +2,7 @@
 [![Forum](https://img.shields.io/badge/Forum-RediSearch-blue)](https://forum.redislabs.com/c/modules/redisearch/)
 [![GoDoc](https://godoc.org/github.com/RediSearch/RediSearchBenchmark?status.svg)](https://godoc.org/github.com/RediSearch/RediSearchBenchmark)
 
-# RediSearchBenchmarks
+# document-benchmarks
 This is a Go application (originally written by Dvir Volk) which supports reading, indexing and searching using two search engines:
 
 * [RediSearch](https://github.com/RediSearch/RediSearch)
@@ -11,12 +11,79 @@ This is a Go application (originally written by Dvir Volk) which supports readin
 with the following datasets:
 
 * [Wikipedia Abstract Data Dumps](https://s3.amazonaws.com/benchmarks.redislabs/redisearch/datasets/enwiki-abstract/enwiki-latest-abstract.xml): from English-language Wikipedia:Database page abstracts. This use case generates 3 TEXT fields per document.
-* [pmc](https://s3.amazonaws.com/benchmarks.redislabs/redisearch/datasets/pmc/documents.json): Full text benchmark with academic papers from PMC.
+* [pmc](https://s3.amazonaws.com/benchmarks.redislabs/redisearch/datasets/pmc/documents.json.bz2): Full text benchmark with academic papers from PMC.
+
+
+
+## Getting Started
+
+### Download Standalone binaries ( no Golang needed )
+
+If you don't have go on your machine and just want to use the produced binaries you can download the following prebuilt bins:
+
+https://github.com/RediSearch/RediSearchBenchmark/releases/latest
+
+Here's how:
+
+**Linux**
+
+x86
+```
+wget -c https://github.com/RediSearch/RediSearchBenchmark/releases/latest/download/document-benchmark-linux-amd64.tar.gz -O - | tar -xz
+
+# give it a try
+./document-benchmark --help
+```
+
+arm64
+```
+wget -c https://github.com/RediSearch/RediSearchBenchmark/releases/latest/download/document-benchmark-linux-arm64.tar.gz -O - | tar -xz
+
+# give it a try
+./document-benchmark --help
+```
+
+**OSX**
+
+x86
+```
+wget -c https://github.com/RediSearch/RediSearchBenchmark/releases/latest/download/document-benchmark-darwin-amd64.tar.gz -O - | tar -xz
+
+# give it a try
+./document-benchmark --help
+```
+
+arm64
+```
+wget -c https://github.com/RediSearch/RediSearchBenchmark/releases/latest/download/document-benchmark-darwin-arm64.tar.gz -O - | tar -xz
+
+# give it a try
+./document-benchmark --help
+```
+
+**Windows**
+```
+wget -c https://github.com/RediSearch/RediSearchBenchmark/releases/latest/download/document-benchmark-windows-amd64.tar.gz -O - | tar -xz
+
+# give it a try
+./document-benchmark --help
+```
+
+### Installation in a Golang env
+
+The easiest way to get and install the benchmark utility with a Go Env is to use
+`go get` and then `go install`:
+```bash
+# Fetch this repo
+go get github.com/RediSearch/RediSearchBenchmark
+cd $GOPATH/src/github.com/RediSearch/RediSearchBenchmark
+make
+```
 
 ## Usage 
 
 ```
-Usage of ./RediSearchBenchmark:
+Usage of ./document-benchmark:
   -benchmark string
     	[search|suggest] - if set, we run the given benchmark
   -c int
@@ -50,37 +117,13 @@ Usage of ./RediSearchBenchmark:
 ```
 
 ### Benchmarking RediSearch
-The following commands perform a two words search query using 5 shards over a `c4.8xlarge` EC2 instance.
-
-Steps:
-
-* Create a 5 shard RediSearch cluster on Redis Enterprise with the following configuration:
-```
-PARTITION AUTO MAXDOCTABLESIZE 10000000
-```
 
 * Populate Data:
 ```
-./RediSearchBenchmark -hosts "host:port" -engine redis -file enwiki-latest-abstract.xml
+./document-benchmark -hosts "host:port" -engine redis -file enwiki-latest-abstract.xml
 ```
 
 * Run the benchmark:
 ```
-./RediSearchBenchmark -hosts "host:port" -engine redis -benchmark search -queries "Barack Obama" -c 32 
+./document-benchmark -hosts "host:port" -engine redis -benchmark search -queries -c 32 
 ```
-
-
-### Multi-Tenant RediSearch benchmark
-The following benchmark tests the amount of time it takes to create 50,000 indexes with 500 docs in each index, for a total of 25M documents. 
-
-Steps:
-
-* Create a 20 shard RediSearch cluster on Redis Enterprise.
-
-* Index Data:
-```
-./RediSearchBenchmark -hosts "host:port" -engine redis -file enwiki-latest-abstract.xml -indexes 50000 -maxdocs 500 -temporary 2147483647
-```
-
-
-

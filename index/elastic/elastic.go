@@ -29,10 +29,12 @@ type Index struct {
 	name         string
 	typ          string
 	disableCache bool
+	shardCount   int
+	replicaCount int
 }
 
 // NewIndex creates a new elasticSearch index with the given address and name. typ is the entity type
-func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, user, pass string) (*Index, error) {
+func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, user, pass string, shardCount, replicaCount, indexerNumCPUs int) (*Index, error) {
 	var err error
 	retryBackoff := backoff.NewExponentialBackOff()
 	elasticMaxRetriesPropDefault := 10
@@ -66,17 +68,15 @@ func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, use
 	}
 	es, err := elastic.NewClient(cfg)
 	if err != nil {
-		fmt.Println(fmt.Sprintf("Error creating the elastic client: %s", err))
+		fmt.Println(fmt.Sprintf("Error creating the elastic client: %v", err))
 		return nil, err
 	}
 	fmt.Println("Connected to elastic!")
 	// 1. Get cluster info
 	var r map[string]interface{}
-	log.Println(strings.Repeat("~", 60))
-
 	res, err := es.Info()
 	if err != nil {
-		log.Fatalf("Error getting response: %s", err)
+		log.Fatalf("Error getting response: %v", err)
 	}
 	defer res.Body.Close()
 	// Check response status
@@ -88,14 +88,13 @@ func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, use
 		log.Fatalf("Error parsing the response body: %s", err)
 	}
 	// Print client and server version numbers.
-	log.Printf("Server: %s", r["version"].(map[string]interface{})["number"])
-	log.Println(strings.Repeat("~", 60))
+	log.Printf("Elastic server info: %s", r["version"].(map[string]interface{})["number"])
 
 	// Create the BulkIndexer
 	bulkIndexerFlushIntervalSecondsPropDefault := 30
 	var flushIntervalTime = bulkIndexerFlushIntervalSecondsPropDefault * int(time.Second)
 	bulkIndexerFlushBytes := int(5e+6)
-	bulkIndexerNumCpus := 4
+	bulkIndexerNumCpus := indexerNumCPUs
 	bulkIndexerRefresh := "false"
 
 	bi, err := esutil.NewBulkIndexer(esutil.BulkIndexerConfig{
@@ -111,7 +110,7 @@ func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, use
 		Refresh: bulkIndexerRefresh,
 	})
 	if err != nil {
-		fmt.Println("Error creating the elastic indexer: %s", err)
+		fmt.Println("Error creating the elastic indexer: %v", err)
 		return nil, err
 	}
 
@@ -122,6 +121,8 @@ func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, use
 		name:         name,
 		typ:          typ,
 		disableCache: disableCache,
+		shardCount:   shardCount,
+		replicaCount: replicaCount,
 	}
 
 	return ret, nil
@@ -163,10 +164,13 @@ func (i *Index) Create() error {
 		mappings.Properties[f.Name]["type"] = fs
 	}
 
-	settings := map[string]interface{}{
-		"index.requests.cache.enable": !i.disableCache,
+	settings := map[string]interface{}{"settings": map[string]interface{}{
+		"index": map[string]interface{}{
+			"number_of_shards": i.shardCount, "number_of_replicas": i.replicaCount,
+			"requests.cache.enable": !i.disableCache,
+		},
+	},
 	}
-
 	fmt.Println("Ensuring that if the index exists we recreat it")
 	// Re-create the index
 	var res *esapi.Response

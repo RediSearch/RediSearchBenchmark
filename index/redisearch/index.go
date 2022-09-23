@@ -164,15 +164,6 @@ func (i *Index) Create() error {
 
 // Index indexes multiple documents on the index, with optional IndexingOptions passed to options
 func (i *Index) Index(docs []index.Document, options interface{}) error {
-
-	var opts IndexingOptions
-	hasOpts := false
-	if options != nil {
-		if opts, hasOpts = options.(IndexingOptions); !hasOpts {
-			return errors.New("invalid indexing options")
-		}
-	}
-
 	conn := i.getConn()
 	defer conn.Close()
 
@@ -180,24 +171,12 @@ func (i *Index) Index(docs []index.Document, options interface{}) error {
 
 	for _, doc := range docs {
 		args := make(redis.Args, 0, len(i.md.Fields)*2+4)
-		args = append(args, i.name, doc.Id, doc.Score)
-		// apply options
-		if hasOpts {
-			if opts.NoSave {
-				args = append(args, "NOSAVE")
-			}
-			if opts.Language != "" {
-				args = append(args, "LANGUAGE", opts.Language)
-			}
-		}
-
-		args = append(args, "FIELDS")
-
+		args = append(args, doc.Id)
 		for k, f := range doc.Properties {
 			args = append(args, k, f)
 		}
 
-		if err := conn.Send(i.commandPrefix+".ADD", args...); err != nil {
+		if err := conn.Send("HSET", args...); err != nil {
 			return err
 		}
 		n++

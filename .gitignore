@@ -1,6 +1,7 @@
 *.a
 *.o
 RediSearchBenchmark
+document-benchmarks
 bin/*
 *.csv
 *.json
@@ -9,4 +10,4 @@ bin/*
 .idea/*
 coverage.txt
 *.txt
-
+*.bz2

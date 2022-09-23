@@ -25,57 +25,56 @@ import (
 )
 
 const (
-	elasticUrl                                 = "es.hosts.list"
-	elasticUrlDefault                          = "http://127.0.0.1:9200"
-	elasticInsecureSSLProp                     = "es.insecure.ssl"
-	elasticInsecureSSLPropDefault              = false
-	elasticShardCountProp                      = "es.number_of_shards"
-	elasticShardCountPropDefault               = 1
-	elasticReplicaCountProp                    = "es.number_of_replicas"
-	elasticReplicaCountPropDefault             = 0
-	elasticUsername                            = "es.username"
-	elasticUsernameDefault                     = "elastic"
-	elasticPassword                            = "es.password"
-	elasticPasswordPropDefault                 = ""
-	elasticFlushInterval                       = "es.flush_interval"
-	bulkIndexerNumberOfWorkers                 = "es.bulk.num_workers"
-	elasticMaxRetriesProp                      = "es.max_retires"
-	elasticMaxRetriesPropDefault               = 10
-	bulkIndexerFlushBytesProp                  = "es.bulk.flush_bytes"
-	bulkIndexerFlushBytesDefault               = 5e+6
-	bulkIndexerFlushIntervalSecondsProp        = "es.bulk.flush_interval_secs"
-	bulkIndexerFlushIntervalSecondsPropDefault = 30
-	elasticIndexNameDefault                    = "ycsb"
-	elasticIndexName                           = "es.index"
+	// IndexName is the name of our index on all engines
+	IndexNamePrefix             = "rd"
+	EN_WIKI_DATASET             = "enwiki"
+	PMC_DATASET                 = "pmc"
+	REDDIT_DATASET              = "reddit"
+	DEFAULT_DATASET             = EN_WIKI_DATASET
+	BENCHMARK_SEARCH            = "search"
+	BENCHMARK_SEARCH_MULTIMATCH = "search:multi_match"
+	BENCHMARK_PREFIX            = "prefix"
+	BENCHMARK_WILDCARD          = "wildcard"
+	BENCHMARK_SUGGEST           = "suggest"
+	BENCHMARK_DEFAULT           = BENCHMARK_SEARCH
+	ENGINE_REDIS                = "redis"
+	ENGINE_ELASTIC              = "elastic"
+	ENGINE_SOLR                 = "solr"
+	TERM_QUERY_MAX_LEN          = "term-query-prefix-max-len"
+	ENGINE_DEFAULT              = ENGINE_REDIS
 )
-
-// IndexName is the name of our index on all engines
-const IndexNamePrefix = "rd"
-const EN_WIKI_DATASET = "enwiki"
-const PMC_DATASET = "pmc"
-const REDDIT_DATASET = "reddit"
-const DEFAULT_DATASET = EN_WIKI_DATASET
-const BENCHMARK_SEARCH = "search"
-const BENCHMARK_SEARCH_MULTIMATCH = "search:multi_match"
-const BENCHMARK_PREFIX = "prefix"
-const BENCHMARK_WILDCARD = "wildcard"
-const BENCHMARK_SUGGEST = "suggest"
-const BENCHMARK_DEFAULT = BENCHMARK_SEARCH
-const ENGINE_REDIS = "redis"
-const ENGINE_ELASTIC = "elastic"
-const ENGINE_SOLR = "solr"
-const ENGINE_DEFAULT = ENGINE_REDIS
 
 // this mutex does not affect any of the client go-routines ( it's only to sync between main thread and datapoints processer go-routines )
 var histogramMutex sync.Mutex
 
-var indexMetadata = index.NewMetadata().
+var indexMetadataEnWiki = index.NewMetadata().
 	AddField(index.NewTextField("body", 1)).
-	AddField(index.NewTextField("title", 5)).
-	AddField(index.NewTextField("url", 5))
+	AddField(index.NewTextField("title", 1)).
+	AddField(index.NewTextField("url", 1))
+
+//1) "accession"
+//2) "journal"
+//3) "name"
+//4) "timestamp"
+//5) "date"
+//6) "volume"
+//7) "pmid"
+//8) "body"
+//9) "issue"
+
+var indexMetadataPMC = index.NewMetadata().
+	AddField(index.NewTextField("accession", 1)).
+	AddField(index.NewTextField("journal", 1)).
+	AddField(index.NewTextField("name", 1)).
+	AddField(index.NewNumericField("timestamp")).
+	AddField(index.NewTextField("date", 1)).
+	AddField(index.NewTextField("volume", 1)).
+	AddField(index.NewTextField("pmid", 1)).
+	AddField(index.NewTextField("body", 1)).
+	AddField(index.NewTextField("issue", 1))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
-func selectIndex(engine string, hosts []string, user, pass string, temporary int, disableCache bool, name string, cmdPrefix string) (index.Index, index.Autocompleter, interface{}) {
+func selectIndex(indexMetadata *index.Metadata, engine string, hosts []string, user, pass string, temporary int, disableCache bool, name string, cmdPrefix string, shardCount, replicaCount, indexerNumCPUs int) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
 	case ENGINE_REDIS:
@@ -84,7 +83,7 @@ func selectIndex(engine string, hosts []string, user, pass string, temporary int
 		ac := redisearch.NewAutocompleter(hosts[0], "ac")
 		return idx, ac, query.QueryVerbatim
 	case ENGINE_ELASTIC:
-		idx, err := elastic.NewIndex(hosts[0], name, "doc", disableCache, indexMetadata, user, pass)
+		idx, err := elastic.NewIndex(hosts[0], name, "doc", disableCache, indexMetadata, user, pass, shardCount, replicaCount, indexerNumCPUs)
 		if err != nil {
 			panic(err)
 		}
@@ -101,6 +100,7 @@ func selectIndex(engine string, hosts []string, user, pass string, temporary int
 }
 
 func main() {
+	runtimeCPUs := runtime.NumCPU()
 	defaultStopWords := "a, an, and, are, as, at, be, but, by, for, if, in, into, is, it, no, not, of, on, or, such, that, the, their, then, there, these, they, this, to, was, will, with"
 	defaultStopWords = strings.Replace(defaultStopWords, " ", "", -1)
 	hosts := flag.String("hosts", "localhost:6379", "comma separated list of host:port to redis nodes")
@@ -110,7 +110,7 @@ func main() {
 	engine := flag.String("engine", ENGINE_DEFAULT, fmt.Sprintf("The search backend to run. One of: [%s]", strings.Join([]string{ENGINE_REDIS, ENGINE_ELASTIC, ENGINE_SOLR}, "|")))
 	termsProperty := flag.String("terms-property", "body", "When we read the terms from the input file we read the text from the property specified in this option. If empty the default property field will be used. Default on 'enwiki' dataset = 'body'. Default on 'reddit' dataset = 'body'")
 	termQueryPrefixMinLen := flag.Int64("term-query-prefix-min-len", 3, "Minimum prefix length for the generated term queries.")
-	termQueryPrefixMaxLen := flag.Int64("term-query-prefix-max-len", 3, "Maximum prefix length for the generated term queries.")
+	termQueryPrefixMaxLen := flag.Int64(TERM_QUERY_MAX_LEN, 3, "Maximum prefix length for the generated term queries.")
 	totalTerms := flag.Int("distinct-terms", 100000, "When reading terms from input files how many terms should be read.")
 	queryField := flag.String("benchmark-query-fieldname", "", "fieldname to use for search|prefix|wildcard benchmarks. If empty will use the default per dataset.")
 	randomSeed := flag.Int64("seed", 12345, "PRNG seed.")
@@ -119,16 +119,18 @@ func main() {
 	benchmark := flag.String("benchmark", "", fmt.Sprintf("The benchmark to run. One of: [%s]. If empty will not run.", strings.Join([]string{BENCHMARK_SEARCH, BENCHMARK_PREFIX, BENCHMARK_WILDCARD}, "|")))
 	random := flag.Int("random", 0, "Generate random documents with terms like term0..term{N}")
 	indexesAmount := flag.Int("indexes", 1, "number of indexes to generate")
-	disableCache := flag.Bool("disableCache", false, "for elastic only. disabling query cache")
+	elasticShardCount := flag.Int("es.number_of_shards", 1, "elastic shard count")
+	elasticReplicaCount := flag.Int("es.number_of_replicas", 0, "elastic replica count")
+	elasticEnableCache := flag.Bool("es.requests.cache.enable", true, "for elastic only. enable query cache.")
 	verbatimEnabled := flag.Bool("verbatim", false, "for redisearch only. does not try to use stemming for query expansion but searches the query terms verbatim.")
 	seconds := flag.Int("duration", 60, "number of seconds to run the benchmark")
 	temporary := flag.Int("temporary", -1, "for redisearch only, create a temporary index that will expire after the given amount of seconds, -1 mean no temporary")
-	conc := flag.Int("c", 4, "benchmark concurrency")
+	conc := flag.Int("c", runtimeCPUs, "benchmark concurrency")
 	debugLevel := flag.Int("debug-level", 0, "print debug info according to debug level. If 0 disabled.")
 	maxDocPerIndex := flag.Int("maxdocs", -1, "specify the number of max docs per index, -1 for no limit")
 	qs := flag.String("queries", "", "comma separated list of queries to benchmark. Use this option only for the historical reasons via `-queries='barack obama'`. If you don't specify a value it will read the input file and randomize the input search terms")
 	outfile := flag.String("o", "benchmark.json", "results output file. set to - for stdout")
-	cmdPrefix := flag.String("prefix", "FT", "Command prefix for FT module")
+	cmdPrefix := flag.String("redis.cmd.prefix", "FT", "Command prefix for FT module")
 	password := flag.String("password", "", "database password")
 	user := flag.String("user", "", "database username. If empty will use the default for each of the databases")
 	reportingPeriod := flag.Duration("reporting-period", 1*time.Second, "Period to report runtime stats")
@@ -139,7 +141,7 @@ func main() {
 		case EN_WIKI_DATASET:
 			benchmarkQueryField = "body"
 		case PMC_DATASET:
-			panic("not implemented!!")
+			benchmarkQueryField = "body"
 		}
 	}
 
@@ -161,6 +163,13 @@ func main() {
 	var opts interface{}
 	var queries []string
 	var err error
+	var indexMetadata *index.Metadata
+	if *dataset == EN_WIKI_DATASET {
+		indexMetadata = indexMetadataEnWiki
+	} else if *dataset == PMC_DATASET {
+		indexMetadata = indexMetadataPMC
+	}
+
 	log.Printf("Using a total of %d concurrent benchmark workers", *conc)
 
 	if *engine == "redis" && *verbatimEnabled {
@@ -170,7 +179,7 @@ func main() {
 	// select index to run
 	for i := 0; i < *indexesAmount; i++ {
 		name := IndexNamePrefix + strconv.Itoa(i)
-		idx, _, _ := selectIndex(*engine, servers, username, *password, *temporary, *disableCache, name, *cmdPrefix)
+		idx, _, _ := selectIndex(indexMetadata, *engine, servers, username, *password, *temporary, !*elasticEnableCache, name, *cmdPrefix, *elasticShardCount, *elasticReplicaCount, *conc)
 		indexes[i] = idx
 	}
 
@@ -184,7 +193,12 @@ func main() {
 				}
 			}
 		} else if *dataset == PMC_DATASET {
-			panic("not yet implemented")
+			wr := &ingest.PmcReader{}
+			if *fileName != "" {
+				if queries, err = ingest.ReadTerms(*fileName, wr, indexes[0], 0, 10000, *totalTerms, *termsProperty, strings.Split(*termStopWords, ",")); err != nil {
+					log.Fatalf("Failed on Term preparation due to %v", err)
+				}
+			}
 		}
 	} else {
 		queries = strings.Split(*qs, ",")
@@ -199,9 +213,24 @@ func main() {
 	w := new(tabwriter.Writer)
 	w.Init(os.Stderr, 20, 0, 0, ' ', tabwriter.AlignRight)
 	// wildcard benchmark
+	if *benchmark == BENCHMARK_WILDCARD {
+		if *indexesAmount > 1 {
+			panic("search not supported on multiple indexes!")
+		}
+		name := fmt.Sprintf("wildcard: %d terms", len(queries))
+		log.Println("Starting term-level queries benchmark: Type WILDCARD")
+		prefixMaxLen := *termQueryPrefixMaxLen
+		if (prefixMaxLen - 2) <= *termQueryPrefixMinLen {
+			prefixMaxLen = prefixMaxLen + 2
+			log.Println(fmt.Sprintf("%s needs to be at least larger by 2 than min length given we want the wildcard to be present at the midle of the term. Forcing %s=%d", TERM_QUERY_MAX_LEN, TERM_QUERY_MAX_LEN, prefixMaxLen))
+		}
+		Benchmark(*conc, duration, &histogramMutex, *engine, name, *outfile, *reportingPeriod, w, WildcardBenchmark(queries, benchmarkQueryField, indexes[0], *termQueryPrefixMinLen, prefixMaxLen, *debugLevel))
+		os.Exit(0)
+	}
+	// prefix benchmark
 	if *benchmark == BENCHMARK_PREFIX {
 		if *indexesAmount > 1 {
-			panic("search not supported on multiple indexes!!!")
+			panic("search not supported on multiple indexes!")
 		}
 		name := fmt.Sprintf("prefix: %d terms", len(queries))
 		log.Println("Starting term-level queries benchmark: Type PREFIX")
@@ -212,7 +241,7 @@ func main() {
 	// FullTextQuerySingleField benchmark
 	if *benchmark == BENCHMARK_SEARCH {
 		if *indexesAmount > 1 {
-			panic("search not supported on multiple indexes!!!")
+			panic("search not supported on multiple indexes!")
 		}
 		name := fmt.Sprintf("search: %d terms", len(queries))
 		log.Println("Starting full-text queries benchmark")
@@ -222,9 +251,7 @@ func main() {
 
 	// Auto-suggest benchmark
 	if *benchmark == BENCHMARK_SUGGEST {
-		panic("not supported!!")
-		// Benchmark(*conc, duration, *engine, "suggest", *outfile, AutocompleteBenchmark(ac, *fuzzy))
-		// os.Exit(0)
+		panic("not yet implemented!")
 	}
 
 	// ingest random documents
@@ -262,7 +289,7 @@ func main() {
 							}
 						} else if *dirName != "" {
 							ingest.ReadDir(*dirName, *fileMatch, wr, idx, nil, redisearch.IndexingOptions{},
-								1000, runtime.NumCPU(), 250, nil, *maxDocPerIndex)
+								1000, runtimeCPUs, 250, nil, *maxDocPerIndex)
 
 						}
 					} else if *dataset == REDDIT_DATASET {
@@ -273,10 +300,18 @@ func main() {
 							}
 						} else if *dirName != "" {
 							ingest.ReadDir(*dirName, *fileMatch, wr, idx, nil, redisearch.IndexingOptions{},
-								1000, runtime.NumCPU(), 250, nil, *maxDocPerIndex)
+								1000, runtimeCPUs, 250, nil, *maxDocPerIndex)
 						}
 					} else if *dataset == PMC_DATASET {
-						panic("not yet implemented")
+						wr := &ingest.PmcReader{}
+						if *fileName != "" {
+							if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, 1, *maxDocPerIndex); err != nil {
+								panic(err)
+							}
+						} else if *dirName != "" {
+							ingest.ReadDir(*dirName, *fileMatch, wr, idx, nil, redisearch.IndexingOptions{},
+								1000, runtimeCPUs, 250, nil, *maxDocPerIndex)
+						}
 					}
 
 				}
