@@ -42,6 +42,7 @@ const (
 	ENGINE_SOLR                 = "solr"
 	TERM_QUERY_MAX_LEN          = "term-query-prefix-max-len"
 	ENGINE_DEFAULT              = ENGINE_REDIS
+	DEFAULT_STOPWORDS           = "a,an,and,are,as,at,be,but,by,for,if,in,into,is,it,no,not,of,on,or,such,that,the,their,then,there,these,they,this,to,was,will,with"
 )
 
 // this mutex does not affect any of the client go-routines ( it's only to sync between main thread and datapoints processer go-routines )
@@ -51,16 +52,6 @@ var indexMetadataEnWiki = index.NewMetadata().
 	AddField(index.NewTextField("body", 1)).
 	AddField(index.NewTextField("title", 1)).
 	AddField(index.NewTextField("url", 1))
-
-//1) "accession"
-//2) "journal"
-//3) "name"
-//4) "timestamp"
-//5) "date"
-//6) "volume"
-//7) "pmid"
-//8) "body"
-//9) "issue"
 
 var indexMetadataPMC = index.NewMetadata().
 	AddField(index.NewTextField("accession", 1)).
@@ -74,7 +65,7 @@ var indexMetadataPMC = index.NewMetadata().
 	AddField(index.NewTextField("issue", 1))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
-func selectIndex(indexMetadata *index.Metadata, engine string, hosts []string, user, pass string, temporary int, disableCache bool, name string, cmdPrefix string, shardCount, replicaCount, indexerNumCPUs int) (index.Index, index.Autocompleter, interface{}) {
+func selectIndex(indexMetadata *index.Metadata, engine string, hosts []string, user, pass string, temporary int, disableCache bool, name string, cmdPrefix string, shardCount, replicaCount, indexerNumCPUs int, tlsSkipVerify bool) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
 	case ENGINE_REDIS:
@@ -83,7 +74,7 @@ func selectIndex(indexMetadata *index.Metadata, engine string, hosts []string, u
 		ac := redisearch.NewAutocompleter(hosts[0], "ac")
 		return idx, ac, query.QueryVerbatim
 	case ENGINE_ELASTIC:
-		idx, err := elastic.NewIndex(hosts[0], name, "doc", disableCache, indexMetadata, user, pass, shardCount, replicaCount, indexerNumCPUs)
+		idx, err := elastic.NewIndex(hosts[0], name, "doc", disableCache, indexMetadata, user, pass, shardCount, replicaCount, indexerNumCPUs, tlsSkipVerify)
 		if err != nil {
 			panic(err)
 		}
@@ -101,8 +92,6 @@ func selectIndex(indexMetadata *index.Metadata, engine string, hosts []string, u
 
 func main() {
 	runtimeCPUs := runtime.NumCPU()
-	defaultStopWords := "a, an, and, are, as, at, be, but, by, for, if, in, into, is, it, no, not, of, on, or, such, that, the, their, then, there, these, they, this, to, was, will, with"
-	defaultStopWords = strings.Replace(defaultStopWords, " ", "", -1)
 	hosts := flag.String("hosts", "localhost:6379", "comma separated list of host:port to redis nodes")
 	fileName := flag.String("file", "", "Input file to ingest data from (wikipedia abstracts)")
 	dirName := flag.String("dir", "", "Recursively read all files in a directory")
@@ -114,7 +103,7 @@ func main() {
 	totalTerms := flag.Int("distinct-terms", 100000, "When reading terms from input files how many terms should be read.")
 	queryField := flag.String("benchmark-query-fieldname", "", "fieldname to use for search|prefix|wildcard benchmarks. If empty will use the default per dataset.")
 	randomSeed := flag.Int64("seed", 12345, "PRNG seed.")
-	termStopWords := flag.String("stopwords", defaultStopWords, "filtered stopwords for term creation")
+	termStopWords := flag.String("stopwords", DEFAULT_STOPWORDS, "filtered stopwords for term creation")
 	dataset := flag.String("dataset", DEFAULT_DATASET, fmt.Sprintf("The dataset tp process. One of: [%s]", strings.Join([]string{EN_WIKI_DATASET, REDDIT_DATASET, PMC_DATASET}, "|")))
 	benchmark := flag.String("benchmark", "", fmt.Sprintf("The benchmark to run. One of: [%s]. If empty will not run.", strings.Join([]string{BENCHMARK_SEARCH, BENCHMARK_PREFIX, BENCHMARK_WILDCARD}, "|")))
 	random := flag.Int("random", 0, "Generate random documents with terms like term0..term{N}")
@@ -122,6 +111,7 @@ func main() {
 	elasticShardCount := flag.Int("es.number_of_shards", 1, "elastic shard count")
 	elasticReplicaCount := flag.Int("es.number_of_replicas", 0, "elastic replica count")
 	elasticEnableCache := flag.Bool("es.requests.cache.enable", true, "for elastic only. enable query cache.")
+	tlsSkipVerify := flag.Bool("tls-skip-verify", true, "Skip verification of server certificate.")
 	verbatimEnabled := flag.Bool("verbatim", false, "for redisearch only. does not try to use stemming for query expansion but searches the query terms verbatim.")
 	seconds := flag.Int("duration", 60, "number of seconds to run the benchmark")
 	temporary := flag.Int("temporary", -1, "for redisearch only, create a temporary index that will expire after the given amount of seconds, -1 mean no temporary")
@@ -179,7 +169,7 @@ func main() {
 	// select index to run
 	for i := 0; i < *indexesAmount; i++ {
 		name := IndexNamePrefix + strconv.Itoa(i)
-		idx, _, _ := selectIndex(indexMetadata, *engine, servers, username, *password, *temporary, !*elasticEnableCache, name, *cmdPrefix, *elasticShardCount, *elasticReplicaCount, *conc)
+		idx, _, _ := selectIndex(indexMetadata, *engine, servers, username, *password, *temporary, !*elasticEnableCache, name, *cmdPrefix, *elasticShardCount, *elasticReplicaCount, *conc, *tlsSkipVerify)
 		indexes[i] = idx
 	}
 

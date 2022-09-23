@@ -34,7 +34,7 @@ type Index struct {
 }
 
 // NewIndex creates a new elasticSearch index with the given address and name. typ is the entity type
-func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, user, pass string, shardCount, replicaCount, indexerNumCPUs int) (*Index, error) {
+func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, user, pass string, shardCount, replicaCount, indexerNumCPUs int, tlsSkipVerify bool) (*Index, error) {
 	var err error
 	retryBackoff := backoff.NewExponentialBackOff()
 	elasticMaxRetriesPropDefault := 10
@@ -62,7 +62,7 @@ func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, use
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
 			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
+				InsecureSkipVerify: tlsSkipVerify,
 			},
 		},
 	}
@@ -257,11 +257,11 @@ func (i *Index) PrefixQuery(q query.Query, verbose int) ([]index.Document, int, 
 			},
 		},
 	}
-	err, hits := elasticSearchQuery(i.name, es, verbose, query)
+	hits, err := elasticSearchQuery(i.name, es, verbose, query)
 	return nil, hits, err
 }
 
-func elasticSearchQuery(indexName string, es *elastic.Client, verbose int, query map[string]interface{}) (error, int) {
+func elasticSearchQuery(indexName string, es *elastic.Client, verbose int, query map[string]interface{}) (int, error) {
 	// Build the request body.
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(query); err != nil {
@@ -280,7 +280,7 @@ func elasticSearchQuery(indexName string, es *elastic.Client, verbose int, query
 	}
 	defer res.Body.Close()
 	hits := elasticParseResponse(r, verbose, res, query)
-	return err, hits
+	return hits, err
 }
 
 func elasticParseResponse(r map[string]interface{}, verbose int, res *esapi.Response, query map[string]interface{}) int {
@@ -327,7 +327,7 @@ func (i *Index) WildCardQuery(q query.Query, verbose int) ([]index.Document, int
 			},
 		},
 	}
-	err, hits := elasticSearchQuery(i.name, es, verbose, query)
+	hits, err := elasticSearchQuery(i.name, es, verbose, query)
 	return nil, hits, err
 }
 
@@ -348,7 +348,7 @@ func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) ([]index.Do
 
 	es := i.conn
 
-	err, hits := elasticSearchQuery(i.name, es, verbose, query)
+	hits, err := elasticSearchQuery(i.name, es, verbose, query)
 	return nil, hits, err
 }
 
