@@ -82,8 +82,6 @@ make
 
 ## Example:
 
-```
-
 ### Benchmarking RediSearch
 
 * Populate Data:
