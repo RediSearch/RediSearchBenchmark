@@ -164,3 +164,4 @@ When we read the terms from the input file we read the text from the property sp
 database username. If empty will use the default for each of the databases
 -verbatim
 for redisearch only. does not try to use stemming for query expansion but searches the query terms verbatim.
+```
