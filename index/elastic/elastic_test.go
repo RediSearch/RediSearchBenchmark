@@ -16,7 +16,7 @@ func TestIndex(t *testing.T) {
 	md := index.NewMetadata().AddField(index.NewTextField("title", 1.0)).
 		AddField(index.NewNumericField("score"))
 
-	idx, err := NewIndex("http://localhost:9200", "testung", "doc", md)
+	idx, err := NewIndex("http://localhost:9200", "testung", "doc", false, md, "elastic", "", 1, 1, 1, true)
 	assert.NoError(t, err)
 	assert.NoError(t, idx.Drop())
 	assert.NoError(t, idx.Create())
@@ -34,7 +34,7 @@ func TestIndex(t *testing.T) {
 	assert.NoError(t, idx.Index(docs, nil))
 
 	q := query.NewQuery("doc", "hello world")
-	docs, total, err := idx.Search(*q)
+	docs, total, err := idx.FullTextQuerySingleField(*q, 0)
 
 	t.Log(docs, total, err)
 	assert.NoError(t, err)
@@ -50,7 +50,7 @@ func TestSuggest(t *testing.T) {
 	md := index.NewMetadata().AddField(index.NewTextField("title", 1.0)).
 		AddField(index.NewNumericField("score"))
 
-	idx, err := NewIndex("http://localhost:9200", "testung", "doc", md)
+	idx, err := NewIndex("http://localhost:9200", "testung", "doc", false, md, "elastic", "", 1, 1, 1, true)
 	assert.NoError(t, err)
 	assert.NoError(t, idx.Drop())
 	assert.NoError(t, idx.Create())

@@ -3,6 +3,7 @@ package redisearch
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -163,15 +164,6 @@ func (i *Index) Create() error {
 
 // Index indexes multiple documents on the index, with optional IndexingOptions passed to options
 func (i *Index) Index(docs []index.Document, options interface{}) error {
-
-	var opts IndexingOptions
-	hasOpts := false
-	if options != nil {
-		if opts, hasOpts = options.(IndexingOptions); !hasOpts {
-			return errors.New("invalid indexing options")
-		}
-	}
-
 	conn := i.getConn()
 	defer conn.Close()
 
@@ -179,24 +171,12 @@ func (i *Index) Index(docs []index.Document, options interface{}) error {
 
 	for _, doc := range docs {
 		args := make(redis.Args, 0, len(i.md.Fields)*2+4)
-		args = append(args, i.name, doc.Id, doc.Score)
-		// apply options
-		if hasOpts {
-			if opts.NoSave {
-				args = append(args, "NOSAVE")
-			}
-			if opts.Language != "" {
-				args = append(args, "LANGUAGE", opts.Language)
-			}
-		}
-
-		args = append(args, "FIELDS")
-
+		args = append(args, doc.Id)
 		for k, f := range doc.Properties {
 			args = append(args, k, f)
 		}
 
-		if err := conn.Send(i.commandPrefix+".ADD", args...); err != nil {
+		if err := conn.Send("HSET", args...); err != nil {
 			return err
 		}
 		n++
@@ -241,19 +221,34 @@ func loadDocument(id, sc, fields interface{}) (index.Document, error) {
 	return doc, nil
 }
 
+func (i *Index) PrefixQuery(q query.Query, verbose int) (docs []index.Document, total int, err error) {
+	return i.FullTextQuerySingleField(q, verbose)
+}
+
+func (i *Index) WildCardQuery(q query.Query, verbose int) (docs []index.Document, total int, err error) {
+	return i.FullTextQuerySingleField(q, verbose)
+}
+
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
-func (i *Index) Search(q query.Query) (docs []index.Document, total int, err error) {
+func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) (docs []index.Document, total int, err error) {
 	conn := i.getConn()
 	defer conn.Close()
-
-	args := redis.Args{i.name, q.Term, "LIMIT", q.Paging.Offset, q.Paging.Num, "WITHSCORES"}
-	//if q.Flags&query.QueryVerbatim != 0 {
-	args = append(args, "VERBATIM")
-	//}
-	if q.Flags&query.QueryNoContent != 0 {
-		args = append(args, "NOCONTENT")
+	term := q.Term
+	if q.Flags&query.QueryTypePrefix != 0 && term[len(term)-1] != '*' {
+		term = fmt.Sprintf("%s*", term)
 	}
+	queryParam := term
+	if q.Field != "" {
+		queryParam = fmt.Sprintf("@%s:%s", q.Field, term)
+	}
+	args := redis.Args{i.name, queryParam, "LIMIT", q.Paging.Offset, q.Paging.Num, "WITHSCORES"}
+	//if q.Flags&query.QueryVerbatim != 0 {
+	//	args = append(args, "VERBATIM")
+	//}
+	//if q.Flags&query.QueryNoContent != 0 {
+	//	args = append(args, "NOCONTENT")
+	//}
 
 	if q.HighlightOpts != nil {
 		args = args.Add("HIGHLIGHT")
@@ -301,26 +296,14 @@ func (i *Index) Search(q query.Query) (docs []index.Document, total int, err err
 	if total, err = redis.Int(res[0], nil); err != nil {
 		return nil, 0, err
 	}
-
-	docs = make([]index.Document, 0, len(res)-1)
-
-	if len(res) > 2 {
-		for i := 1; i < len(res); i += 2 {
-
-			var fields interface{} = []interface{}{}
-			if q.Flags&query.QueryNoContent == 0 {
-				fields = res[i+2]
-
-			}
-			if d, e := loadDocument(res[i], res[i+1], fields); e == nil {
-				docs = append(docs, d)
-			}
-			if q.Flags&query.QueryNoContent == 0 {
-				i++
-			}
-		}
+	if verbose > 1 {
+		log.Printf(
+			"query %v. %d hits",
+			args,
+			total,
+		)
 	}
-	return docs, len(docs), nil
+	return nil, total, nil
 }
 
 func (i *Index) Drop() error {

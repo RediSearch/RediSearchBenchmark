@@ -31,7 +31,7 @@ func TestIndex(t *testing.T) {
 	assert.NoError(t, idx.Index(docs, nil))
 
 	q := query.NewQuery("testung", "hello world")
-	docs, total, err := idx.Search(*q)
+	docs, total, err := idx.FullTextQuerySingleField(*q)
 	assert.NoError(t, err)
 	assert.True(t, total == 100)
 	assert.Len(t, docs, int(q.Paging.Num))

@@ -4,8 +4,10 @@ package query
 type Flag uint64
 
 const (
-	QueryVerbatim  Flag = 0x1
-	QueryNoContent Flag = 0x2
+	QueryVerbatim     Flag = 0x1
+	QueryNoContent    Flag = 0x2
+	QueryTypePrefix   Flag = 0x3
+	QueryTypeWildcard Flag = 0x4
 	// ... more to come!
 
 	DefaultOffset = 0
@@ -32,6 +34,7 @@ type SummaryOptions struct {
 type Query struct {
 	Index      string
 	Term       string
+	Field      string
 	Predicates []Predicate
 	Paging     Paging
 	Flags      Flag
@@ -106,5 +109,10 @@ func (q *Query) Summarize(fields ...string) *Query {
 // This function accepts advanced settings for snippet length, separators and number of snippets
 func (q *Query) SummarizeOptions(opts SummaryOptions) *Query {
 	q.SummarizeOpts = &opts
+	return q
+}
+
+func (q *Query) SetField(field string) *Query {
+	q.Field = field
 	return q
 }

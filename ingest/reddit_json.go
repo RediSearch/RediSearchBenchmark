@@ -41,7 +41,7 @@ type redditDocument struct {
 
 type RedditReader struct{}
 
-func (rr *RedditReader) Read(r io.Reader, ch chan index.Document) error {
+func (rr *RedditReader) Read(r io.Reader, ch chan index.Document, maxDocsToRead int, idx index.Index) error {
 	log.Println("Reddit reader opening", r)
 	bz := bzip2.NewReader(r)
 	jr := json.NewDecoder(bz)

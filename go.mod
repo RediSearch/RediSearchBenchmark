@@ -1,13 +1,23 @@
 module github.com/RediSearch/RediSearchBenchmark
 
-go 1.16
+go 1.18
 
 require (
+	code.cloudfoundry.org/bytefmt v0.0.0-20200131002437-cf55d5288a48
+	github.com/HdrHistogram/hdrhistogram-go v1.1.2
+	github.com/cenkalti/backoff/v4 v4.1.3
+	github.com/elastic/go-elasticsearch/v8 v8.4.0
 	github.com/garyburd/redigo v1.6.2
-	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/olivere/elastic v6.2.35+incompatible // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/stretchr/testify v1.7.0
 	github.com/vanng822/go-solr v0.10.0
-	gopkg.in/olivere/elastic.v6 v6.2.35
+	golang.org/x/exp v0.0.0-20220916125017-b168a2c6b86b
+)
+
+require (
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/elastic/elastic-transport-go/v8 v8.1.0 // indirect
+	github.com/onsi/ginkgo v1.16.5 // indirect
+	github.com/onsi/gomega v1.20.2 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

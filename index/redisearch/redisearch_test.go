@@ -28,7 +28,7 @@ func TestIndex(t *testing.T) {
 	assert.NoError(t, idx.Index(docs, nil))
 
 	q := query.NewQuery(idx.name, "hello world")
-	docs, total, err := idx.Search(*q)
+	docs, total, err := idx.FullTextQuerySingleField(*q)
 	assert.NoError(t, err)
 	assert.True(t, total > 0)
 	assert.Len(t, docs, 1)
@@ -36,7 +36,7 @@ func TestIndex(t *testing.T) {
 	assert.Equal(t, docs[0].Properties["title"], "hello world")
 
 	q = query.NewQuery(idx.name, "hello")
-	docs, total, err = idx.Search(*q)
+	docs, total, err = idx.FullTextQuerySingleField(*q)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, total)
 	assert.Len(t, docs, 2)

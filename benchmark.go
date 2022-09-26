@@ -1,31 +1,84 @@
 package main
 
 import (
-	"encoding/csv"
+	"encoding/json"
 	"fmt"
-	"io"
-	"math/rand"
-	"os"
-	"sync"
-	"sync/atomic"
-	"time"
-
+	hdrhistogram "github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/RediSearch/RediSearchBenchmark/index"
 	"github.com/RediSearch/RediSearchBenchmark/query"
+	"io"
+	"io/ioutil"
+	"log"
+	"math/rand"
+	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"text/tabwriter"
+	"time"
 )
 
 // SearchBenchmark returns a closure of a function for the benchmarker to run, using a given index
 // and options, on a set of queries
-func SearchBenchmark(queries []string, idx index.Index, opts interface{}) func() error {
-
+func SearchBenchmark(queries []string, field string, idx index.Index, opts interface{}, debug int) func() error {
 	counter := 0
 	return func() error {
-		q := query.NewQuery(idx.GetName(), queries[counter%len(queries)]).Limit(0, 5)
-		_, _, err := idx.Search(*q)
+		q := query.NewQuery(idx.GetName(), queries[counter%len(queries)]).Limit(0, 5).SetField(field)
+		_, _, err := idx.FullTextQuerySingleField(*q, debug)
 		counter++
 		return err
 	}
+}
 
+// SearchBenchmark returns a closure of a function for the benchmarker to run, using a given index
+// and options, on a set of queries
+func PrefixBenchmark(terms []string, field string, idx index.Index, prefixMinLen, prefixMaxLen int64, debug int) func() error {
+	counter := 0
+	fixedPrefixSize := false
+	if prefixMinLen == prefixMaxLen {
+		fixedPrefixSize = true
+	}
+	return func() error {
+		term := terms[counter%len(terms)]
+		var prefixSize int64 = prefixMinLen
+		if !fixedPrefixSize {
+			n := rand.Int63n(int64(prefixMaxLen - prefixMinLen))
+			prefixSize = prefixSize + n
+		}
+		for prefixSize > int64(len(term)) {
+			counter++
+			term = terms[counter%len(terms)]
+		}
+		term = term[0:prefixSize]
+		q := query.NewQuery(idx.GetName(), term).Limit(0, 5).SetFlags(query.QueryTypePrefix).SetField(field)
+		_, _, err := idx.PrefixQuery(*q, debug)
+		counter++
+		return err
+	}
+}
+
+// SearchBenchmark returns a closure of a function for the benchmarker to run, using a given index
+// and options, on a set of queries
+func WildcardBenchmark(terms []string, field string, idx index.Index, prefixMinLen, prefixMaxLen int64, debug int) func() error {
+	counter := 0
+	return func() error {
+		term := terms[counter%len(terms)]
+		var prefixSize int64 = prefixMinLen
+		n := rand.Int63n(int64(prefixMaxLen - prefixMinLen))
+		prefixSize = prefixSize + n
+		wildcardPos := prefixSize + 1
+		minTermLen := wildcardPos + 1
+		for minTermLen > int64(len(term)) {
+			counter++
+			term = terms[counter%len(terms)]
+		}
+		term = term[0:minTermLen]
+		term = term[:prefixSize] + "*" + term[minTermLen-1:]
+		q := query.NewQuery(idx.GetName(), term).Limit(0, 5).SetField(field)
+		_, _, err := idx.WildCardQuery(*q, debug)
+		counter++
+		return err
+	}
 }
 
 // AutocompleteBenchmark returns a configured autocomplete benchmarking function to be run by
@@ -46,7 +99,8 @@ func AutocompleteBenchmark(ac index.Autocompleter, fuzzy bool) func() error {
 // with the results to a CSV file given by outfile.
 //
 // If outfile is "-" we write the result to stdout
-func Benchmark(concurrency int, duration time.Duration, engine, title string, outfile string, f func() error) {
+func Benchmark(concurrency int, duration time.Duration, instantMutex *sync.Mutex, engine, title string, outfile string, reportingPeriod time.Duration, tab *tabwriter.Writer, f func() error) {
+	totalHistogram = hdrhistogram.New(1, 1000000, 3)
 
 	var out io.WriteCloser
 	var err error
@@ -59,28 +113,32 @@ func Benchmark(concurrency int, duration time.Duration, engine, title string, ou
 		}
 		defer out.Close()
 	}
-
 	startTime := time.Now()
-	// the total time it took to run the functions, to measure average latency, in nanoseconds
-	var totalTime uint64
-	var total uint64
+	endTime := startTime.Add(duration)
 	wg := sync.WaitGroup{}
 
-	end := time.Now().Add(duration)
+	if reportingPeriod.Nanoseconds() > 0 {
+		go report(reportingPeriod, startTime, endTime, tab)
+	}
 
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func() {
-			for time.Now().Before(end) {
+			for time.Now().Before(endTime) {
 
 				tst := time.Now()
 
 				if err = f(); err != nil {
 					panic(err)
 				}
-
+				instantMutex.Lock()
+				err = totalHistogram.RecordValue(time.Since(tst).Microseconds())
+				if err != nil {
+					panic(err)
+				}
+				instantMutex.Unlock()
 				// update the total requests performed and total time
-				atomic.AddUint64(&total, 1)
+				atomic.AddUint64(&totalOps, 1)
 				atomic.AddUint64(&totalTime, uint64(time.Since(tst)))
 
 			}
@@ -88,23 +146,37 @@ func Benchmark(concurrency int, duration time.Duration, engine, title string, ou
 		}()
 	}
 	wg.Wait()
+	took := endTime.Sub(startTime)
+	// keep this due to the \r
+	fmt.Println("")
+	log.Println(fmt.Sprintf("Finished the benchmark after %s.", took.String()))
 
-	avgLatency := (float64(totalTime) / float64(total)) / float64(time.Millisecond)
-	rate := float64(total) / (float64(time.Since(startTime)) / float64(time.Second))
+	testResult := TestResult{
+		Metadata:            "",
+		ResultFormatVersion: CurrentResultFormatVersion,
+		Limit:               0,
+		Workers:             uint(concurrency),
+		MaxRps:              -1,
+		DBSpecificConfigs:   nil,
+		StartTime:           startTime.Unix() * 1000,
+		EndTime:             endTime.Unix() * 1000,
+		DurationMillis:      took.Milliseconds(),
+		Totals:              nil,
+		OverallRates:        GetOverallRatesMap(took),
+		OverallQuantiles:    GetOverallQuantiles(),
+		TimeSeries:          nil,
+	}
+	if strings.Compare(outfile, "") != 0 {
+		log.Println(fmt.Sprintf("Storing the benchmark results in %s", outfile))
+		file, err := json.MarshalIndent(testResult, "", " ")
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	// Output the results to CSV
-	w := csv.NewWriter(out)
-
-	err = w.Write([]string{engine, title,
-		fmt.Sprintf("%d", concurrency),
-		fmt.Sprintf("%.02f", rate),
-		fmt.Sprintf("%.02f", avgLatency)})
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing: %s\n", err)
-	} else {
-		fmt.Println("Done!")
-		w.Flush()
+		err = ioutil.WriteFile(outfile, file, 0644)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 }

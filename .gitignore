@@ -1,8 +1,13 @@
 *.a
 *.o
 RediSearchBenchmark
+document-benchmarks
 bin/*
 *.csv
+*.json
 *.xml
 *.gz
 .idea/*
+coverage.txt
+*.txt
+*.bz2

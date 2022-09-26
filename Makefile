@@ -19,7 +19,7 @@ endif
 
 .PHONY: all
 
-all: get RediSearchBenchmark
+all: get document-benchmark
 fmt:
 	$(GOFMT) ./...
 
@@ -39,5 +39,5 @@ get:
 test: get fmt
 	$(GOTEST) -v -race -coverprofile=coverage.txt -covermode=atomic ./...
 
-RediSearchBenchmark: $(wildcard ./index/*.go) $(wildcard ./ingest/*.go) $(wildcard ./query/*.go) $(wildcard ./synth/*.go) 
+document-benchmark: $(wildcard ./index/*.go) $(wildcard ./ingest/*.go) $(wildcard ./query/*.go) $(wildcard ./synth/*.go) fmt
 	$(GOBUILD) -o ./bin/$@ -ldflags="-X 'main.GitSHA1=$(GIT_SHA)' -X 'main.GitDirty=$(GIT_DIRTY)'" .

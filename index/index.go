@@ -9,7 +9,9 @@ import (
 type Index interface {
 	GetName() string
 	Index(documents []Document, options interface{}) error
-	Search(query.Query) (docs []Document, total int, err error)
+	FullTextQuerySingleField(query.Query, int) (docs []Document, total int, err error)
+	PrefixQuery(query.Query, int) (docs []Document, total int, err error)
+	WildCardQuery(query.Query, int) (docs []Document, total int, err error)
 	Drop() error
 	Create() error
 }
