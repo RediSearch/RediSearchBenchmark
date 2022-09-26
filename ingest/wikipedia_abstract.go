@@ -120,7 +120,6 @@ func (wr *WikipediaAbstractsReader) Read(r io.Reader, ch chan index.Document, ma
 								Set("title", title).
 								Set("body", body).
 								Set("url", strings.TrimSpace(props["url"]))
-								//Set("score", rand.Int31n(50000))
 							ch <- doc
 							docsRead++
 						}

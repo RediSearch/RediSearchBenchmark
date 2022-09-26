@@ -205,7 +205,7 @@ func ReadTerms(fileName string, r DocumentReader, idx index.Index, chunk int, ma
 
 // IngestDocuments ingests documents into an index using a DocumentReader
 func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autocompleter,
-	opts interface{}, chunk int, maxDocsToRead int) error {
+	opts interface{}, chunk int, maxDocsToRead int, indexingWorkers int) error {
 
 	var wg sync.WaitGroup
 
@@ -228,7 +228,7 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 	dt := 0
 	totalDt := 0
 	doch := make(chan index.Document, 1)
-	for w := 0; w < 200; w++ {
+	for w := 0; w < indexingWorkers; w++ {
 		wg.Add(1)
 		go func(doch chan index.Document) {
 			defer wg.Done()

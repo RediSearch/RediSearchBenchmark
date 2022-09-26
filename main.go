@@ -65,7 +65,7 @@ var indexMetadataPMC = index.NewMetadata().
 	AddField(index.NewTextField("issue", 1))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
-func selectIndex(indexMetadata *index.Metadata, engine string, hosts []string, user, pass string, temporary int, disableCache bool, name string, cmdPrefix string, shardCount, replicaCount, indexerNumCPUs int, tlsSkipVerify bool) (index.Index, index.Autocompleter, interface{}) {
+func selectIndex(indexMetadata *index.Metadata, engine string, hosts []string, user, pass string, temporary int, disableCache bool, name string, cmdPrefix string, shardCount, replicaCount, indexerNumCPUs int, tlsSkipVerify bool, bulkIndexerFlushIntervalSeconds int, bulkIndexerRefresh string) (index.Index, index.Autocompleter, interface{}) {
 
 	switch engine {
 	case ENGINE_REDIS:
@@ -74,7 +74,7 @@ func selectIndex(indexMetadata *index.Metadata, engine string, hosts []string, u
 		ac := redisearch.NewAutocompleter(hosts[0], "ac")
 		return idx, ac, query.QueryVerbatim
 	case ENGINE_ELASTIC:
-		idx, err := elastic.NewIndex(hosts[0], name, "doc", disableCache, indexMetadata, user, pass, shardCount, replicaCount, indexerNumCPUs, tlsSkipVerify)
+		idx, err := elastic.NewIndex(hosts[0], name, "doc", disableCache, indexMetadata, user, pass, shardCount, replicaCount, indexerNumCPUs, tlsSkipVerify, bulkIndexerFlushIntervalSeconds, bulkIndexerRefresh)
 		if err != nil {
 			panic(err)
 		}
@@ -117,14 +117,16 @@ func main() {
 	temporary := flag.Int("temporary", -1, "for redisearch only, create a temporary index that will expire after the given amount of seconds, -1 mean no temporary")
 	conc := flag.Int("c", runtimeCPUs, "benchmark concurrency")
 	debugLevel := flag.Int("debug-level", 0, "print debug info according to debug level. If 0 disabled.")
+	bulkIndexerFlushIntervalSeconds := flag.Int("es.bulk.flush_interval_secs", 1, "ES bulk indexer flush interval.")
 	maxDocPerIndex := flag.Int("maxdocs", -1, "specify the number of max docs per index, -1 for no limit")
 	qs := flag.String("queries", "", "comma separated list of queries to benchmark. Use this option only for the historical reasons via `-queries='barack obama'`. If you don't specify a value it will read the input file and randomize the input search terms")
 	outfile := flag.String("o", "benchmark.json", "results output file. set to - for stdout")
 	cmdPrefix := flag.String("redis.cmd.prefix", "FT", "Command prefix for FT module")
 	password := flag.String("password", "", "database password")
+	bulkIndexerRefresh := flag.String("es.refresh", "true", "If true, Elasticsearch refreshes the affected\n\t\t// shards to make this operation visible to search\n\t\t// if wait_for then wait for a refresh to make this operation visible to search,\n\t\t// if false do nothing with refreshes. Valid values: true, false, wait_for. Default: false.")
 	user := flag.String("user", "", "database username. If empty will use the default for each of the databases")
 	reportingPeriod := flag.Duration("reporting-period", 1*time.Second, "Period to report runtime stats")
-
+	bulkIndexingSizeDocs := flag.Int("bulk.indexer.ndocs", 100, "Groups the documents into chunks to index.")
 	benchmarkQueryField := *queryField
 	if benchmarkQueryField == "" {
 		switch *dataset {
@@ -169,7 +171,7 @@ func main() {
 	// select index to run
 	for i := 0; i < *indexesAmount; i++ {
 		name := IndexNamePrefix + strconv.Itoa(i)
-		idx, _, _ := selectIndex(indexMetadata, *engine, servers, username, *password, *temporary, !*elasticEnableCache, name, *cmdPrefix, *elasticShardCount, *elasticReplicaCount, *conc, *tlsSkipVerify)
+		idx, _, _ := selectIndex(indexMetadata, *engine, servers, username, *password, *temporary, !*elasticEnableCache, name, *cmdPrefix, *elasticShardCount, *elasticReplicaCount, *conc, *tlsSkipVerify, *bulkIndexerFlushIntervalSeconds, *bulkIndexerRefresh)
 		indexes[i] = idx
 	}
 
@@ -274,7 +276,7 @@ func main() {
 						wr := &ingest.WikipediaAbstractsReader{}
 						if *fileName != "" {
 
-							if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, 1000, *maxDocPerIndex); err != nil {
+							if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, *bulkIndexingSizeDocs, *maxDocPerIndex, *conc); err != nil {
 								panic(err)
 							}
 						} else if *dirName != "" {
@@ -285,7 +287,7 @@ func main() {
 					} else if *dataset == REDDIT_DATASET {
 						wr := &ingest.RedditReader{}
 						if *fileName != "" {
-							if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, 1000, *maxDocPerIndex); err != nil {
+							if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, *bulkIndexingSizeDocs, *maxDocPerIndex, *conc); err != nil {
 								panic(err)
 							}
 						} else if *dirName != "" {
@@ -295,12 +297,12 @@ func main() {
 					} else if *dataset == PMC_DATASET {
 						wr := &ingest.PmcReader{}
 						if *fileName != "" {
-							if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, 1, *maxDocPerIndex); err != nil {
+							if err := ingest.ReadFile(*fileName, wr, idx, nil, redisearch.IndexingOptions{}, *bulkIndexingSizeDocs, *maxDocPerIndex, *conc); err != nil {
 								panic(err)
 							}
 						} else if *dirName != "" {
 							ingest.ReadDir(*dirName, *fileMatch, wr, idx, nil, redisearch.IndexingOptions{},
-								1000, runtimeCPUs, 250, nil, *maxDocPerIndex)
+								*bulkIndexingSizeDocs, runtimeCPUs, 250, nil, *maxDocPerIndex)
 						}
 					}
 

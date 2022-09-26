@@ -34,7 +34,7 @@ type Index struct {
 }
 
 // NewIndex creates a new elasticSearch index with the given address and name. typ is the entity type
-func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, user, pass string, shardCount, replicaCount, indexerNumCPUs int, tlsSkipVerify bool) (*Index, error) {
+func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, user, pass string, shardCount, replicaCount, indexerNumCPUs int, tlsSkipVerify bool, bulkIndexerFlushIntervalSeconds int, bulkIndexerRefresh string) (*Index, error) {
 	var err error
 	retryBackoff := backoff.NewExponentialBackOff()
 	elasticMaxRetriesPropDefault := 10
@@ -91,11 +91,9 @@ func NewIndex(addr, name, typ string, disableCache bool, md *index.Metadata, use
 	log.Printf("Elastic server info: %s", r["version"].(map[string]interface{})["number"])
 
 	// Create the BulkIndexer
-	bulkIndexerFlushIntervalSecondsPropDefault := 30
-	var flushIntervalTime = bulkIndexerFlushIntervalSecondsPropDefault * int(time.Second)
+	var flushIntervalTime = bulkIndexerFlushIntervalSeconds * int(time.Second)
 	bulkIndexerFlushBytes := int(5e+6)
 	bulkIndexerNumCpus := indexerNumCPUs
-	bulkIndexerRefresh := "false"
 
 	bi, err := esutil.NewBulkIndexer(esutil.BulkIndexerConfig{
 		Index:         name,                             // The default index name
@@ -153,7 +151,6 @@ func (i *Index) GetName() string {
 
 // Create creates the index and posts a mapping corresponding to our Metadata
 func (i *Index) Create() error {
-
 	mappings := mapping{Properties: map[string]mappingProperty{}}
 	for _, f := range i.md.Fields {
 		mappings.Properties[f.Name] = mappingProperty{}
@@ -164,12 +161,12 @@ func (i *Index) Create() error {
 		mappings.Properties[f.Name]["type"] = fs
 	}
 
-	settings := map[string]interface{}{"settings": map[string]interface{}{
+	settings := map[string]interface{}{
 		"index": map[string]interface{}{
-			"number_of_shards": i.shardCount, "number_of_replicas": i.replicaCount,
+			"number_of_shards":      i.shardCount,
+			"number_of_replicas":    i.replicaCount,
 			"requests.cache.enable": !i.disableCache,
 		},
-	},
 	}
 	fmt.Println("Ensuring that if the index exists we recreat it")
 	// Re-create the index
@@ -188,13 +185,9 @@ func (i *Index) Create() error {
 		return err
 	}
 	res, err = i.conn.Indices.Create(i.name, i.conn.Indices.Create.WithBody(strings.NewReader(string(data))))
-	if err != nil {
-		fmt.Println(fmt.Sprintf("Cannot create index: %s", err))
+	if err != nil || res.IsError() {
+		fmt.Println(fmt.Sprintf("Cannot create index: %v. %v", err, res.String()))
 		return err
-	}
-	if res.IsError() {
-		fmt.Println(fmt.Sprintf("Cannot create index: %s", res))
-		return fmt.Errorf("Cannot create index: %s", res)
 	}
 	res.Body.Close()
 
