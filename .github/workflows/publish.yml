@@ -23,4 +23,4 @@ jobs:
           binary_name: "./document-benchmark"
           sha256sum: true
           asset_name: document-benchmark-${{ matrix.goos }}-${{ matrix.goarch }}
-          build_command: "make build"
+          build_command: "make document-benchmark"
