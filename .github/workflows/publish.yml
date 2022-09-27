@@ -20,7 +20,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
-          binary_name: "./document-benchmark"
+          binary_name: "./bin/document-benchmark"
           sha256sum: true
           asset_name: document-benchmark-${{ matrix.goos }}-${{ matrix.goarch }}
           build_command: "make document-benchmark"
