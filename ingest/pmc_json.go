@@ -43,6 +43,7 @@ func (rr *PmcReader) Read(r io.Reader, ch chan index.Document, maxDocsToRead int
 	bz := bzip2.NewReader(r)
 	jr := json.NewDecoder(bz)
 	//layout := "YYYY-MM-DDThh:mm:ss"
+	docsRead := 0
 
 	var rd pmcDocument
 	var err error
@@ -72,6 +73,12 @@ func (rr *PmcReader) Read(r io.Reader, ch chan index.Document, maxDocsToRead int
 				Set("pmid", rd.Pmid).
 				Set("body", rd.Body)
 			ch <- doc
+
+			docsRead++
+
+			if maxDocsToRead != -1 && docsRead >= maxDocsToRead {
+				break
+			}
 		}
 		close(ch)
 	}()

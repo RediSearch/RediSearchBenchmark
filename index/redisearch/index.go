@@ -108,10 +108,15 @@ func NewIndex(addrs []string, pass string, temporary int, name string, md *index
 			}
 		}
 	}
-	//ret.pool.MaxActive = ret.pool.MaxIdle
 
 	return ret
 
+}
+
+func (i *Index) DocumentCount() int {
+	conn := i.getConn()
+	defer conn.Close()
+	return 0
 }
 
 func (i *Index) GetName() string {
@@ -196,31 +201,6 @@ func (i *Index) Index(docs []index.Document, options interface{}) error {
 	return nil
 }
 
-// convert the result from a redis query to a proper Document object
-func loadDocument(id, sc, fields interface{}) (index.Document, error) {
-
-	score, err := strconv.ParseFloat(string(sc.([]byte)), 64)
-	if err != nil {
-		return index.Document{}, fmt.Errorf("Could not parse score: %s", err)
-	}
-
-	doc := index.NewDocument(string(id.([]byte)), float32(score))
-	lst := fields.([]interface{})
-	for i := 0; i < len(lst); i += 2 {
-		prop := string(lst[i].([]byte))
-		var val interface{}
-		switch v := lst[i+1].(type) {
-		case []byte:
-			val = string(v)
-		default:
-			val = v
-
-		}
-		doc = doc.Set(prop, val)
-	}
-	return doc, nil
-}
-
 func (i *Index) PrefixQuery(q query.Query, verbose int) (docs []index.Document, total int, err error) {
 	return i.FullTextQuerySingleField(q, verbose)
 }
@@ -243,12 +223,6 @@ func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) (docs []ind
 		queryParam = fmt.Sprintf("@%s:%s", q.Field, term)
 	}
 	args := redis.Args{i.name, queryParam, "LIMIT", q.Paging.Offset, q.Paging.Num, "WITHSCORES"}
-	//if q.Flags&query.QueryVerbatim != 0 {
-	//	args = append(args, "VERBATIM")
-	//}
-	//if q.Flags&query.QueryNoContent != 0 {
-	//	args = append(args, "NOCONTENT")
-	//}
 
 	if q.HighlightOpts != nil {
 		args = args.Add("HIGHLIGHT")
@@ -309,8 +283,7 @@ func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) (docs []ind
 func (i *Index) Drop() error {
 	conn := i.getConn()
 	defer conn.Close()
-
-	_, err := conn.Do("FT.DROP", i.name)
+	_, err := conn.Do("FLUSHALL")
 	return err
 
 }

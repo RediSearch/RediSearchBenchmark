@@ -81,18 +81,6 @@ func WildcardBenchmark(terms []string, field string, idx index.Index, prefixMinL
 	}
 }
 
-// AutocompleteBenchmark returns a configured autocomplete benchmarking function to be run by
-// the benchmarker
-func AutocompleteBenchmark(ac index.Autocompleter, fuzzy bool) func() error {
-	counter := 0
-	sz := len(prefixes)
-	return func() error {
-		_, err := ac.Suggest(prefixes[rand.Intn(sz)], 5, fuzzy)
-		counter++
-		return err
-	}
-}
-
 // Benchmark runs a given function f for the given duration, and outputs the throughput and latency of the function.
 //
 // It receives metadata like the engine we are running and the title of the specific benchmark, and writes these along

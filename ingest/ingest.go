@@ -9,14 +9,11 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"sync"
 
 	"github.com/RediSearch/RediSearchBenchmark/index"
 )
@@ -65,104 +62,6 @@ type Stats struct {
 	CurrentWindowLatency  time.Duration
 }
 
-func ngrams(words []string, size int, count map[string]uint32) {
-
-	offset := int(math.Floor(float64(size / 2)))
-
-	max := len(words)
-	for i := range words {
-		if i < offset || i+size-offset > max {
-			continue
-		}
-		gram := strings.Join(words[i-offset:i+size-offset], " ")
-		count[gram] += uint32(size)
-	}
-
-}
-
-// ReadDir reads a complete directory and feeds each file it finds to a document reader
-func ReadDir(dirName string, pattern string, r DocumentReader, idx index.Index, ac index.Autocompleter,
-	opts interface{}, chunk int, workers int, conns int, stats chan Stats, maxDocsToRead int) {
-	filech := make(chan string, 100)
-	go func() {
-		defer close(filech)
-		walkDir(dirName, pattern, filech)
-	}()
-
-	doch := make(chan index.Document, chunk)
-	countch := make(chan time.Duration, chunk*workers)
-	// start the independent idexing workers
-	wg := sync.WaitGroup{}
-	go func() {
-		for i := 0; i < conns; i++ {
-			wg.Add(1)
-			go func(doch chan index.Document, countch chan time.Duration) {
-				for doc := range doch {
-					if doc.Id != "" {
-						//fmt.Println(doc)
-						st := time.Now()
-						idx.Index([]index.Document{doc}, opts)
-						dur := time.Since(st)
-						countch <- dur
-
-					}
-				}
-				wg.Done()
-			}(doch, countch)
-
-		}
-		wg.Wait()
-	}()
-	// start the file reader workers
-	for i := 0; i < workers; i++ {
-		go func(filech chan string, doch chan index.Document) {
-			for file := range filech {
-				fp, err := os.Open(file)
-				if err != nil {
-					log.Println(err)
-				} else {
-					if err = r.Read(fp, doch, maxDocsToRead, idx); err != nil {
-						log.Printf("Error reading %s: %s", file, err)
-					}
-				}
-				fp.Close()
-			}
-		}(filech, doch)
-	}
-
-	stt := Stats{
-		CurrentWindowDocs:     0,
-		TotalDocs:             0,
-		CurrentWindowRate:     0,
-		CurrentWindowDuration: 0,
-		CurrentWindowLatency:  0,
-	}
-
-	st := time.Now()
-	var totalLatency time.Duration
-	for rtt := range countch {
-		stt.TotalDocs++
-		stt.CurrentWindowDocs++
-		totalLatency += rtt
-
-		if time.Since(st) > 200*time.Millisecond {
-			stt.CurrentWindowDuration = time.Since(st)
-			stt.CurrentWindowRate = float64(stt.CurrentWindowDocs) / (float64(stt.CurrentWindowDuration.Seconds()))
-			stt.CurrentWindowLatency = totalLatency / (1 + time.Duration(stt.CurrentWindowDocs))
-			//dtrate := float32(dt) / (float32(time.Since(st).Seconds())) / float32(1024*1024)
-			fmt.Println(stt.TotalDocs, "docs done, avg latency:", stt.CurrentWindowLatency, " rate: ", stt.CurrentWindowRate, "d/s")
-			st = time.Now()
-			if stats != nil {
-				stats <- stt
-			}
-			stt.CurrentWindowDocs = 0
-			totalLatency = 0
-
-		}
-	}
-	log.Println("Done!")
-}
-
 // IngestDocuments ingests documents into an index using a DocumentReader
 func ReadTerms(fileName string, r DocumentReader, idx index.Index, chunk int, maxDocsToRead int, maxTermsToProduce int, propertyName string, termStopWords []string) (finalTerms []string, err error) {
 	// open the file
@@ -204,10 +103,7 @@ func ReadTerms(fileName string, r DocumentReader, idx index.Index, chunk int, ma
 }
 
 // IngestDocuments ingests documents into an index using a DocumentReader
-func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autocompleter,
-	opts interface{}, chunk int, maxDocsToRead int, indexingWorkers int) error {
-
-	var wg sync.WaitGroup
+func ReadFile(fileName string, r DocumentReader, idx index.Index, opts interface{}, chunk int, maxDocsToRead int, indexingWorkers int) error {
 
 	// open the file
 	fp, err := os.Open(fileName)
@@ -221,67 +117,17 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, ac index.Autoc
 		return err
 	}
 
-	st := time.Now()
-
-	i := 0
-	n := 0
-	dt := 0
-	totalDt := 0
-	doch := make(chan index.Document, 1)
-	for w := 0; w < indexingWorkers; w++ {
-		wg.Add(1)
-		go func(doch chan index.Document) {
-			defer wg.Done()
-			docs := []index.Document{}
-			numOfDocs := 0
-			for doc := range doch {
-				if doc.Id != "" {
-					docs = append(docs, doc)
-					numOfDocs++
-				} else {
-					fmt.Println("warning empty id")
-				}
-				if len(docs) > chunk {
-					idx.Index(docs, opts)
-					docs = []index.Document{}
-				}
-			}
-			if len(docs) > 0 {
-				idx.Index(docs, opts)
-			}
-		}(doch)
-	}
+	numOfDocs := 0
 	for doc := range ch {
-
-		if doc.Score == 0 {
-			doc.Score = 0.0000001
-		}
-
-		for k, v := range doc.Properties {
-			switch s := v.(type) {
-			case string:
-				dt += len(s) + len(k)
-				totalDt += len(s) + len(k)
+		if doc.Id != "" {
+			err = idx.Index([]index.Document{doc}, opts)
+			if err != nil {
+				log.Fatal(err)
 			}
-		}
-
-		i++
-		n++
-		doch <- doc
-
-		// print report every CHUNK documents
-		if i%chunk == 0 {
-			rate := float32(n) / (float32(time.Since(st).Seconds()))
-			dtrate := float32(dt) / (float32(time.Since(st).Seconds())) / float32(1024*1024)
-			fmt.Println(i, "rate: ", rate, "d/s. data rate: ", dtrate, "MB/s", "total data ingested", float32(totalDt)/float32(1024*1024))
-			st = time.Now()
-			n = 0
-			dt = 0
+			numOfDocs++
+		} else {
+			fmt.Println("warning empty id")
 		}
 	}
-
-	close(doch)
-	wg.Wait()
-
 	return nil
 }
