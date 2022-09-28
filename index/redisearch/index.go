@@ -1,18 +1,17 @@
 package redisearch
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
 	"strconv"
+	"strings"
 	"sync"
-
-	"time"
 
 	"github.com/RediSearch/RediSearchBenchmark/index"
 	"github.com/RediSearch/RediSearchBenchmark/query"
-	"github.com/garyburd/redigo/redis"
+	goredis "github.com/go-redis/redis/v9"
 )
 
 // IndexingOptions are flags passed to the the abstract Index call, which receives them as interface{}, allowing
@@ -35,72 +34,66 @@ type IndexingOptions struct {
 	Prefix string
 }
 
-type ConnectionPool struct {
-	sync.Mutex
-	pools map[string]*redis.Pool
-}
+var total int64 = 0
+var mu sync.Mutex = sync.Mutex{}
 
-var connectionPool = ConnectionPool{
-	pools: map[string]*redis.Pool{},
+type redisClient interface {
+	Do(ctx context.Context, args ...interface{}) *goredis.Cmd
+	FlushDB(ctx context.Context) *goredis.StatusCmd
+	Close() error
 }
 
 // Index is an interface to redisearch's redis connads
 type Index struct {
 	sync.Mutex
-	hosts         []string
-	password      string
-	temporary     int
-	md            *index.Metadata
-	name          string
-	commandPrefix string
-}
-
-var maxConns = 500
-
-func (i *Index) getConn() redis.Conn {
-	connectionPool.Lock()
-	defer connectionPool.Unlock()
-	host := i.hosts[rand.Intn(len(i.hosts))]
-	pool, found := connectionPool.pools[host]
-	if !found {
-		pool = redis.NewPool(func() (redis.Conn, error) {
-			// TODO: Add timeouts. and 2 separate pools for indexing and querying, with different timeouts
-			if i.password != "" {
-				return redis.Dial("tcp", host, redis.DialPassword(i.password))
-			} else {
-				return redis.Dial("tcp", host)
-			}
-
-		}, maxConns)
-		pool.TestOnBorrow = func(c redis.Conn, t time.Time) error {
-			if time.Since(t).Seconds() > 3 {
-				_, err := c.Do("PING")
-				return err
-			}
-			return nil
-		}
-
-		connectionPool.pools[host] = pool
-	}
-	return pool.Get()
-
+	hosts            []string
+	password         string
+	temporary        int
+	md               *index.Metadata
+	name             string
+	commandPrefix    string
+	client           redisClient
+	clientClient     *goredis.ClusterClient
+	standaloneClient *goredis.Client
+	cluster          bool
 }
 
 // NewIndex creates a new index connecting to the redis host, and using the given name as key prefix
-func NewIndex(addrs []string, pass string, temporary int, name string, md *index.Metadata) *Index {
-
+func NewIndex(addrs []string, pass string, temporary int, name string, md *index.Metadata, mode string) *Index {
 	ret := &Index{
-
 		hosts: addrs,
 
 		md:        md,
 		password:  pass,
 		temporary: temporary,
 
-		name: name,
-
+		name:          name,
 		commandPrefix: "FT",
+		cluster:       false,
 	}
+	switch mode {
+	case "cluster":
+		ret.cluster = true
+		opts := &goredis.ClusterOptions{}
+		opts.Addrs = addrs
+		opts.MaxRedirects = 10
+		opts.Password = pass
+		clusterC := goredis.NewClusterClient(opts)
+		ret.client = clusterC
+		ret.clientClient = clusterC
+
+	case "single":
+		fallthrough
+	default:
+		opts := &goredis.Options{}
+		opts.Network = "tcp"
+		opts.Addr = addrs[0]
+		opts.Password = pass
+		standaloneC := goredis.NewClient(opts)
+		ret.client = standaloneC
+		ret.standaloneClient = standaloneC
+	}
+
 	if md != nil && md.Options != nil {
 		if opts, ok := md.Options.(IndexingOptions); ok {
 			if opts.Prefix != "" {
@@ -113,10 +106,32 @@ func NewIndex(addrs []string, pass string, temporary int, name string, md *index
 
 }
 
-func (i *Index) DocumentCount() int {
-	conn := i.getConn()
-	defer conn.Close()
-	return 0
+func (i *Index) DocumentCount() (count int64) {
+	ctx := context.Background()
+	if i.cluster {
+		i.clientClient.ForEachMaster(ctx, docCountShard)
+	} else {
+		docCountShard(ctx, i.standaloneClient)
+	}
+	count = int64(total)
+	return count
+}
+
+func docCountShard(ctx context.Context, conn *goredis.Client) (err error) {
+	mu.Lock()
+	defer mu.Unlock()
+	res := strings.Split(conn.Do(ctx, "INFO", "KEYSPACE").String(), "\n")
+	count := int64(0)
+	if len(res) > 2 {
+		db0Slice := res[1]
+		countS := strings.Split(strings.Split(db0Slice, ",")[0], "=")[1]
+		count, err = strconv.ParseInt(countS, 10, 0)
+		if err != nil {
+			return
+		}
+	}
+	total = total + count
+	return
 }
 
 func (i *Index) GetName() string {
@@ -125,8 +140,7 @@ func (i *Index) GetName() string {
 
 // Create configues the index and creates it on redis
 func (i *Index) Create() error {
-
-	args := redis.Args{i.name}
+	args := []interface{}{i.commandPrefix + ".CREATE", i.name}
 	if i.temporary != -1 {
 		t := strconv.Itoa(i.temporary)
 		args = append(args, "TEMPORARY", t)
@@ -142,7 +156,7 @@ func (i *Index) Create() error {
 			if !ok {
 				return errors.New("Invalid text field options type")
 			}
-			args = append(args, f.Name, "TEXT", "WEIGHT", opts.Weight)
+			args = append(args, f.Name, "TEXT", "WEIGHT", "1.0")
 			if opts.Sortable {
 				args = append(args, "SORTABLE")
 			}
@@ -161,43 +175,24 @@ func (i *Index) Create() error {
 
 	}
 
-	conn := i.getConn()
-	defer conn.Close()
-	_, err := conn.Do(i.commandPrefix+".CREATE", args...)
+	conn := i.client
+	err := conn.Do(context.Background(), args...).Err()
 	return err
 }
 
 // Index indexes multiple documents on the index, with optional IndexingOptions passed to options
 func (i *Index) Index(docs []index.Document, options interface{}) error {
-	conn := i.getConn()
-	defer conn.Close()
-
-	n := 0
-
+	conn := i.client
 	for _, doc := range docs {
-		args := make(redis.Args, 0, len(i.md.Fields)*2+4)
-		args = append(args, doc.Id)
+		args := []interface{}{"HSET", doc.Id}
 		for k, f := range doc.Properties {
 			args = append(args, k, f)
 		}
-
-		if err := conn.Send("HSET", args...); err != nil {
+		err := conn.Do(context.Background(), args...).Err()
+		if err != nil {
 			return err
 		}
-		n++
 	}
-
-	if err := conn.Flush(); err != nil {
-		return err
-	}
-
-	for n > 0 {
-		if _, err := conn.Receive(); err != nil {
-			return err
-		}
-		n--
-	}
-
 	return nil
 }
 
@@ -212,8 +207,7 @@ func (i *Index) WildCardQuery(q query.Query, verbose int) (docs []index.Document
 // Search searches the index for the given query, and returns documents,
 // the total number of results, or an error if something went wrong
 func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) (docs []index.Document, total int, err error) {
-	conn := i.getConn()
-	defer conn.Close()
+	conn := i.client
 	term := q.Term
 	if q.Flags&query.QueryTypePrefix != 0 && term[len(term)-1] != '*' {
 		term = fmt.Sprintf("%s*", term)
@@ -222,54 +216,14 @@ func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) (docs []ind
 	if q.Field != "" {
 		queryParam = fmt.Sprintf("@%s:%s", q.Field, term)
 	}
-	args := redis.Args{i.name, queryParam, "LIMIT", q.Paging.Offset, q.Paging.Num, "WITHSCORES"}
-
-	if q.HighlightOpts != nil {
-		args = args.Add("HIGHLIGHT")
-		if q.HighlightOpts.Fields != nil && len(q.HighlightOpts.Fields) > 0 {
-			args = args.Add("FIELDS", len(q.HighlightOpts.Fields))
-			args = args.AddFlat(q.HighlightOpts.Fields)
-		}
-		args = args.Add("TAGS", q.HighlightOpts.Tags[0], q.HighlightOpts.Tags[1])
-	}
-
-	if q.SummarizeOpts != nil {
-		args = args.Add("SUMMARIZE")
-		if q.SummarizeOpts.Fields != nil && len(q.SummarizeOpts.Fields) > 0 {
-			args = args.Add("FIELDS", len(q.SummarizeOpts.Fields))
-			args = args.AddFlat(q.SummarizeOpts.Fields)
-		}
-		if q.SummarizeOpts.FragmentLen > 0 {
-			args = args.Add("LEN", q.SummarizeOpts.FragmentLen)
-		}
-		if q.SummarizeOpts.NumFragments > 0 {
-			args = args.Add("FRAGS", q.SummarizeOpts.NumFragments)
-		}
-		if q.SummarizeOpts.Separator != "" {
-			args = args.Add("SEPARATOR", q.SummarizeOpts.Separator)
-		}
-	}
-
-	if err := conn.Send(i.commandPrefix+".SEARCH", args...); err != nil {
-		panic(err)
-	}
-
-	if err := conn.Flush(); err != nil {
-		panic(err)
-	}
-
-	if _, err := conn.Receive(); err != nil {
-		panic(err)
-	}
-
-	res, err := redis.Values(conn.Do(i.commandPrefix+".SEARCH", args...))
+	args := []interface{}{"FT.SEARCH", i.name, queryParam, "LIMIT", q.Paging.Offset, q.Paging.Num, "WITHSCORES"}
+	sliceReply, err := conn.Do(context.Background(), args...).Slice()
 	if err != nil {
-		return nil, 0, err
+		return
 	}
-
-	if total, err = redis.Int(res[0], nil); err != nil {
-		return nil, 0, err
-	}
+	res := sliceReply[0]
+	n := res.(int64)
+	total = int(n)
 	if verbose > 1 {
 		log.Printf(
 			"query %v. %d hits",
@@ -280,10 +234,15 @@ func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) (docs []ind
 	return nil, total, nil
 }
 
-func (i *Index) Drop() error {
-	conn := i.getConn()
-	defer conn.Close()
-	_, err := conn.Do("FLUSHALL")
-	return err
+func flush(ctx context.Context, client *goredis.Client) error {
+	return client.FlushAll(ctx).Err()
+}
 
+func (i *Index) Drop() (err error) {
+	if i.cluster {
+		err = i.clientClient.ForEachMaster(context.Background(), flush)
+	} else {
+		err = i.client.FlushDB(context.Background()).Err()
+	}
+	return
 }

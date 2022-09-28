@@ -39,6 +39,8 @@ const (
 	TERM_QUERY_MAX_LEN = "term-query-prefix-max-len"
 	ENGINE_DEFAULT     = ENGINE_REDIS
 	DEFAULT_STOPWORDS  = "a,an,and,are,as,at,be,but,by,for,if,in,into,is,it,no,not,of,on,or,such,that,the,their,then,there,these,they,this,to,was,will,with"
+	redisMode          = "redis.mode"
+	redisModeDefault   = "single"
 )
 
 // this mutex does not affect any of the client go-routines ( it's only to sync between main thread and datapoints processer go-routines )
@@ -61,12 +63,12 @@ var indexMetadataPMC = index.NewMetadata().
 	AddField(index.NewTextField("issue", 1))
 
 // selectIndex selects and configures the index we are now running based on the engine name, hosts and number of shards
-func selectIndex(indexMetadata *index.Metadata, engine string, hosts []string, user, pass string, temporary int, disableCache bool, name string, cmdPrefix string, shardCount, replicaCount, indexerNumCPUs int, tlsSkipVerify bool, bulkIndexerFlushIntervalSeconds int, bulkIndexerRefresh string) (index.Index, interface{}) {
+func selectIndex(indexMetadata *index.Metadata, engine string, hosts []string, user, pass string, temporary int, disableCache bool, name string, cmdPrefix string, shardCount, replicaCount, indexerNumCPUs int, tlsSkipVerify bool, bulkIndexerFlushIntervalSeconds int, bulkIndexerRefresh string, redisMode string) (index.Index, interface{}) {
 
 	switch engine {
 	case ENGINE_REDIS:
 		indexMetadata.Options = redisearch.IndexingOptions{Prefix: cmdPrefix}
-		idx := redisearch.NewIndex(hosts, pass, temporary, name, indexMetadata)
+		idx := redisearch.NewIndex(hosts, pass, temporary, name, indexMetadata, redisMode)
 		return idx, query.QueryVerbatim
 	case ENGINE_ELASTIC:
 		idx, err := elastic.NewIndex(hosts[0], name, "doc", disableCache, indexMetadata, user, pass, shardCount, replicaCount, indexerNumCPUs, tlsSkipVerify, bulkIndexerFlushIntervalSeconds, bulkIndexerRefresh)
@@ -102,9 +104,10 @@ func main() {
 	conc := flag.Int("c", runtimeCPUs, "benchmark concurrency")
 	debugLevel := flag.Int("debug-level", 0, "print debug info according to debug level. If 0 disabled.")
 	bulkIndexerFlushIntervalSeconds := flag.Int("es.bulk.flush_interval_secs", 1, "ES bulk indexer flush interval.")
-	maxDocPerIndex := flag.Int("maxdocs", -1, "specify the number of max docs per index, -1 for no limit")
+	maxDocPerIndex := flag.Int64("maxdocs", -1, "specify the number of max docs per index, -1 for no limit")
 	outfile := flag.String("o", "benchmark.json", "results output file. set to - for stdout")
 	cmdPrefix := flag.String("redis.cmd.prefix", "FT", "Command prefix for FT module")
+	redisMode := flag.String("redis.mode", redisModeDefault, "redis connection mode. one if 'sigle'")
 	password := flag.String("password", "", "database password")
 	bulkIndexerRefresh := flag.String("es.refresh", "true", "If true, Elasticsearch refreshes the affected\n\t\t// shards to make this operation visible to search\n\t\t// if wait_for then wait for a refresh to make this operation visible to search,\n\t\t// if false do nothing with refreshes. Valid values: true, false, wait_for. Default: false.")
 	user := flag.String("user", "", "database username. If empty will use the default for each of the databases")
@@ -163,7 +166,7 @@ func main() {
 	}
 	// select index to run
 	name := IndexNamePrefix + strconv.Itoa(0)
-	idx, _ := selectIndex(indexMetadata, *engine, servers, username, *password, *temporary, !*elasticEnableCache, name, *cmdPrefix, *elasticShardCount, *elasticReplicaCount, *conc, *tlsSkipVerify, *bulkIndexerFlushIntervalSeconds, *bulkIndexerRefresh)
+	idx, _ := selectIndex(indexMetadata, *engine, servers, username, *password, *temporary, !*elasticEnableCache, name, *cmdPrefix, *elasticShardCount, *elasticReplicaCount, *conc, *tlsSkipVerify, *bulkIndexerFlushIntervalSeconds, *bulkIndexerRefresh, *redisMode)
 	indexes[0] = idx
 
 	if *benchmark != "" {
@@ -210,7 +213,17 @@ func main() {
 	} else {
 		if *dropData {
 			fmt.Println("Ensuring a clean DB at start of ingestion")
-			idx.Drop()
+			err := idx.Drop()
+			if err != nil {
+				panic(err)
+			}
+			ndocs := idx.DocumentCount()
+			if ndocs != 0 {
+				fmt.Fprintln(os.Stderr, fmt.Sprintf("Expected %d documents in the index, but got %d.", 0, ndocs))
+				os.Exit(-1)
+			} else {
+				log.Println(fmt.Sprintf("Confirmed that the index total documents is the expected value %d=%d", ndocs, 0))
+			}
 		}
 		err := idx.Create()
 		if err != nil {
@@ -233,6 +246,8 @@ func main() {
 			if ndocs != *maxDocPerIndex {
 				fmt.Fprintln(os.Stderr, fmt.Sprintf("Expected %d documents in the index, but got %d.", *maxDocPerIndex, ndocs))
 				os.Exit(-1)
+			} else {
+				log.Println(fmt.Sprintf("Confirmed that the index total documents is the expected value %d=%d", ndocs, *maxDocPerIndex))
 			}
 		}
 		if err != nil {

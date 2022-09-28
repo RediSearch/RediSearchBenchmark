@@ -149,7 +149,7 @@ func (i *Index) GetName() string {
 	return i.name
 }
 
-func (i *Index) DocumentCount() int {
+func (i *Index) DocumentCount() int64 {
 	return 0
 }
 

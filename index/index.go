@@ -13,6 +13,6 @@ type Index interface {
 	PrefixQuery(query.Query, int) (docs []Document, total int, err error)
 	WildCardQuery(query.Query, int) (docs []Document, total int, err error)
 	Drop() error
-	DocumentCount() int
+	DocumentCount() int64
 	Create() error
 }

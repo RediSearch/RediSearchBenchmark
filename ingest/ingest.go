@@ -103,7 +103,7 @@ func ReadTerms(fileName string, r DocumentReader, idx index.Index, chunk int, ma
 }
 
 // IngestDocuments ingests documents into an index using a DocumentReader
-func ReadFile(fileName string, r DocumentReader, idx index.Index, opts interface{}, chunk int, maxDocsToRead int, indexingWorkers int) error {
+func ReadFile(fileName string, r DocumentReader, idx index.Index, opts interface{}, chunk int, maxDocsToRead int64, indexingWorkers int) error {
 
 	// open the file
 	fp, err := os.Open(fileName)
@@ -113,7 +113,7 @@ func ReadFile(fileName string, r DocumentReader, idx index.Index, opts interface
 	defer fp.Close()
 	ch := make(chan index.Document, chunk)
 	// run the reader and let it spawn a goroutine
-	if err := r.Read(fp, ch, maxDocsToRead, idx); err != nil {
+	if err := r.Read(fp, ch, int(maxDocsToRead), idx); err != nil {
 		return err
 	}
 
