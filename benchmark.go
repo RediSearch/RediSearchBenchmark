@@ -140,7 +140,7 @@ func WildcardBenchmark(terms []string, field string, idx index.Index, prefixMinL
 //
 // If outfile is "-" we write the result to stdout
 func Benchmark(concurrency int, duration time.Duration, instantMutex *sync.Mutex, engine, title string, outfile string, reportingPeriod time.Duration, tab *tabwriter.Writer, f func() error) {
-	totalHistogram = hdrhistogram.New(1, 1000000, 3)
+	totalHistogram = hdrhistogram.New(1, 1000000000, 3)
 
 	var out io.WriteCloser
 	var err error
