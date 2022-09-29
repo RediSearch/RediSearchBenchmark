@@ -56,20 +56,20 @@ type Index struct {
 	clientClient     *goredis.ClusterClient
 	standaloneClient *goredis.Client
 	cluster          bool
+	withSuffixTrie   bool
 }
 
 // NewIndex creates a new index connecting to the redis host, and using the given name as key prefix
-func NewIndex(addrs []string, pass string, temporary int, name string, md *index.Metadata, mode string) *Index {
+func NewIndex(addrs []string, pass string, temporary int, name string, md *index.Metadata, mode string, withSuffixTrie bool) *Index {
 	ret := &Index{
-		hosts: addrs,
-
-		md:        md,
-		password:  pass,
-		temporary: temporary,
-
-		name:          name,
-		commandPrefix: "FT",
-		cluster:       false,
+		hosts:          addrs,
+		md:             md,
+		password:       pass,
+		temporary:      temporary,
+		name:           name,
+		commandPrefix:  "FT",
+		cluster:        false,
+		withSuffixTrie: withSuffixTrie,
 	}
 	switch mode {
 	case "cluster":
@@ -160,8 +160,9 @@ func (i *Index) Create() error {
 			if opts.Sortable {
 				args = append(args, "SORTABLE")
 			}
-
-			// stemming per field not supported yet
+			if i.withSuffixTrie {
+				args = append(args, "WITHSUFFIXTRIE")
+			}
 
 		case index.NumericField:
 			args = append(args, f.Name, "NUMERIC")
