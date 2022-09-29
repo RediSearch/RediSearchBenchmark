@@ -30,6 +30,58 @@ func SearchBenchmark(queries []string, field string, idx index.Index, opts inter
 	}
 }
 
+func SuffixBenchmark(terms []string, field string, idx index.Index, prefixMinLen, prefixMaxLen int64, debug int) func() error {
+	counter := 0
+	fixedPrefixSize := false
+	if prefixMinLen == prefixMaxLen {
+		fixedPrefixSize = true
+	}
+	return func() error {
+		term := terms[counter%len(terms)]
+		var prefixSize int64 = prefixMinLen
+		if !fixedPrefixSize {
+			n := rand.Int63n(int64(prefixMaxLen - prefixMinLen))
+			prefixSize = prefixSize + n
+		}
+		for prefixSize > int64(len(term)) {
+			counter++
+			term = terms[counter%len(terms)]
+		}
+		term = term[len(term)-int(prefixSize):]
+		q := query.NewQuery(idx.GetName(), term).Limit(0, 5).SetFlags(query.QueryTypeSuffix).SetField(field)
+		_, _, err := idx.SuffixQuery(*q, debug)
+		counter++
+		return err
+	}
+}
+
+func ContainsBenchmark(terms []string, field string, idx index.Index, prefixMinLen, prefixMaxLen int64, debug int) func() error {
+	counter := 0
+	fixedPrefixSize := false
+	if prefixMinLen == prefixMaxLen {
+		fixedPrefixSize = true
+	}
+	return func() error {
+		term := terms[counter%len(terms)]
+		var prefixSize int64 = prefixMinLen
+		if !fixedPrefixSize {
+			n := rand.Int63n(int64(prefixMaxLen - prefixMinLen))
+			prefixSize = prefixSize + n
+		}
+		for prefixSize > int64(len(term)) {
+			counter++
+			term = terms[counter%len(terms)]
+		}
+		term = term[0:prefixSize]
+		term = "*" + term + "*"
+
+		q := query.NewQuery(idx.GetName(), term).Limit(0, 5).SetField(field)
+		_, _, err := idx.ContainsQuery(*q, debug)
+		counter++
+		return err
+	}
+}
+
 // SearchBenchmark returns a closure of a function for the benchmarker to run, using a given index
 // and options, on a set of queries
 func PrefixBenchmark(terms []string, field string, idx index.Index, prefixMinLen, prefixMaxLen int64, debug int) func() error {

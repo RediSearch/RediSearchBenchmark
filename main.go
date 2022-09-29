@@ -31,6 +31,8 @@ const (
 	DEFAULT_DATASET           = EN_WIKI_DATASET
 	BENCHMARK_SEARCH          = "search"
 	BENCHMARK_PREFIX          = "prefix"
+	BENCHMARK_CONTAINS        = "contains"
+	BENCHMARK_SUFFIX          = "suffix"
 	BENCHMARK_WILDCARD        = "wildcard"
 	BENCHMARK_DEFAULT         = BENCHMARK_SEARCH
 	ENGINE_REDIS              = "redis"
@@ -93,7 +95,7 @@ func main() {
 	randomSeed := flag.Int64("seed", 12345, "PRNG seed.")
 	termStopWords := flag.String("stopwords", DEFAULT_STOPWORDS, "filtered stopwords for term creation")
 	dataset := flag.String("dataset", DEFAULT_DATASET, fmt.Sprintf("The dataset tp process. One of: [%s]", strings.Join([]string{EN_WIKI_DATASET, REDDIT_DATASET, PMC_DATASET}, "|")))
-	benchmark := flag.String("benchmark", "", fmt.Sprintf("The benchmark to run. One of: [%s]. If empty will not run.", strings.Join([]string{BENCHMARK_SEARCH, BENCHMARK_PREFIX, BENCHMARK_WILDCARD}, "|")))
+	benchmark := flag.String("benchmark", "", fmt.Sprintf("The benchmark to run. One of: [%s]. If empty will not run.", strings.Join([]string{BENCHMARK_SEARCH, BENCHMARK_PREFIX, BENCHMARK_WILDCARD, BENCHMARK_CONTAINS, BENCHMARK_SUFFIX}, "|")))
 
 	tlsSkipVerify := flag.Bool("tls-skip-verify", true, "Skip verification of server certificate.")
 	seconds := flag.Int("duration", 60, "number of seconds to run the benchmark")
@@ -194,6 +196,10 @@ func main() {
 		}
 		returnCode := 0
 		switch *benchmark {
+		case BENCHMARK_CONTAINS:
+			name := fmt.Sprintf("contains: %d terms", len(queries))
+			log.Println("Starting term-level queries benchmark: Type CONTAINS")
+			Benchmark(*conc, duration, &histogramMutex, *engine, name, *outfile, *reportingPeriod, w, ContainsBenchmark(queries, benchmarkQueryField, indexes[0], *termQueryPrefixMinLen, *termQueryPrefixMaxLen, *debugLevel))
 		case BENCHMARK_WILDCARD:
 			name := fmt.Sprintf("wildcard: %d terms", len(queries))
 			log.Println("Starting term-level queries benchmark: Type WILDCARD")
@@ -203,6 +209,10 @@ func main() {
 				log.Println(fmt.Sprintf("%s needs to be at least larger by 2 than min length given we want the wildcard to be present at the midle of the term. Forcing %s=%d", TERM_QUERY_MAX_LEN, TERM_QUERY_MAX_LEN, prefixMaxLen))
 			}
 			Benchmark(*conc, duration, &histogramMutex, *engine, name, *outfile, *reportingPeriod, w, WildcardBenchmark(queries, benchmarkQueryField, indexes[0], *termQueryPrefixMinLen, prefixMaxLen, *debugLevel))
+		case BENCHMARK_SUFFIX:
+			name := fmt.Sprintf("suffix: %d terms", len(queries))
+			log.Println("Starting term-level queries benchmark: Type SUFFIX")
+			Benchmark(*conc, duration, &histogramMutex, *engine, name, *outfile, *reportingPeriod, w, SuffixBenchmark(queries, benchmarkQueryField, indexes[0], *termQueryPrefixMinLen, *termQueryPrefixMaxLen, *debugLevel))
 		case BENCHMARK_PREFIX:
 			name := fmt.Sprintf("prefix: %d terms", len(queries))
 			log.Println("Starting term-level queries benchmark: Type PREFIX")

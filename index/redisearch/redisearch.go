@@ -197,6 +197,14 @@ func (i *Index) Index(docs []index.Document, options interface{}) error {
 	return nil
 }
 
+func (i *Index) SuffixQuery(q query.Query, verbose int) (docs []index.Document, total int, err error) {
+	return i.FullTextQuerySingleField(q, verbose)
+}
+
+func (i *Index) ContainsQuery(q query.Query, verbose int) (docs []index.Document, total int, err error) {
+	return i.FullTextQuerySingleField(q, verbose)
+}
+
 func (i *Index) PrefixQuery(q query.Query, verbose int) (docs []index.Document, total int, err error) {
 	return i.FullTextQuerySingleField(q, verbose)
 }
@@ -212,6 +220,9 @@ func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) (docs []ind
 	term := q.Term
 	if q.Flags&query.QueryTypePrefix != 0 && term[len(term)-1] != '*' {
 		term = fmt.Sprintf("%s*", term)
+	}
+	if q.Flags&query.QueryTypeSuffix != 0 && term[0] != '*' {
+		term = fmt.Sprintf("*%s", term)
 	}
 	queryParam := term
 	if q.Field != "" {
