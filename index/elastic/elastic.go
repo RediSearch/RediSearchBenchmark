@@ -149,6 +149,10 @@ func (i *Index) GetName() string {
 	return i.name
 }
 
+func (i *Index) DocumentCount() int64 {
+	return 0
+}
+
 // Create creates the index and posts a mapping corresponding to our Metadata
 func (i *Index) Create() error {
 	mappings := mapping{Properties: map[string]mappingProperty{}}
@@ -356,41 +360,6 @@ func (i *Index) Drop() error {
 	}
 	res.Body.Close()
 	return err
-}
-
-// AddTerms add suggestion terms to the suggester index
-func (i *Index) AddTerms(terms ...index.Suggestion) error {
-	return nil
-
-}
-
-// Suggest gets completion suggestions for a given prefix.
-// TODO: fuzzy not supported yet
-func (i *Index) Suggest(prefix string, num int, fuzzy bool) ([]index.Suggestion, error) {
-
-	// s := elastic.NewCompletionSuggester("autocomplete").Field("sugg").Text(prefix).Size(num)
-
-	// res, err := i.conn.Suggest(i.name).Suggester(s).Do(context.Background())
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// if suggs, found := res["autocomplete"]; found {
-	// 	if len(suggs) > 0 {
-	// 		opts := suggs[0].Options
-
-	// 		ret := make([]index.Suggestion, 0, len(opts))
-	// 		for _, op := range opts {
-	// 			ret = append(ret, index.Suggestion{Term: op.Text, Score: float64(op.Score)})
-	// 		}
-	// 		return ret, nil
-	// 	}
-
-	// }
-
-	//ret := make([]index.Suggestion, res.)
-	return nil, nil
-
 }
 
 // Delete the suggestion index, currently just calls Drop()

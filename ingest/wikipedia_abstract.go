@@ -90,7 +90,7 @@ func (wr *WikipediaAbstractsReader) Read(r io.Reader, ch chan index.Document, ma
 
 	dec := xml.NewDecoder(r)
 	go func() {
-		docsRead := 1
+		docsRead := 0
 		tok, err := dec.RawToken()
 
 		props := map[string]string{}
@@ -109,12 +109,10 @@ func (wr *WikipediaAbstractsReader) Read(r io.Reader, ch chan index.Document, ma
 				if name == "title" || name == "url" || name == "abstract" {
 					props[name] = currentText
 				} else if name == "doc" {
-
 					id := idx.GetName() + "-" + path.Base(props["url"])
 					if len(id) > 0 {
 						title := strings.TrimPrefix(strings.TrimSpace(props["title"]), "Wikipedia: ")
 						body := strings.TrimSpace(props["abstract"])
-						//fmt.Println(title)
 						if filter(title, body) {
 							doc := index.NewDocument(id, wr.score(id)).
 								Set("title", title).
