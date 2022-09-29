@@ -11,7 +11,9 @@ type Index interface {
 	Index(documents []Document, options interface{}) error
 	FullTextQuerySingleField(query.Query, int) (docs []Document, total int, err error)
 	PrefixQuery(query.Query, int) (docs []Document, total int, err error)
+	SuffixQuery(query.Query, int) (docs []Document, total int, err error)
 	WildCardQuery(query.Query, int) (docs []Document, total int, err error)
+	ContainsQuery(q query.Query, debug int) (docs []Document, total int, err error)
 	Drop() error
 	DocumentCount() int64
 	Create() error

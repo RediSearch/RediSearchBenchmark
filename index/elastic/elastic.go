@@ -311,6 +311,42 @@ func elasticParseResponse(r map[string]interface{}, verbose int, res *esapi.Resp
 }
 
 // https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-wildcard-query.html
+func (i *Index) ContainsQuery(q query.Query, verbose int) ([]index.Document, int, error) {
+	es := i.conn
+	query := map[string]interface{}{
+		"from": q.Paging.Offset,
+		"size": q.Paging.Num,
+		"query": map[string]interface{}{
+			"wildcard": map[string]interface{}{
+				q.Field: map[string]interface{}{
+					"value": q.Term,
+				},
+			},
+		},
+	}
+	hits, err := elasticSearchQuery(i.name, es, verbose, query)
+	return nil, hits, err
+}
+
+// https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-wildcard-query.html
+func (i *Index) SuffixQuery(q query.Query, verbose int) ([]index.Document, int, error) {
+	es := i.conn
+	query := map[string]interface{}{
+		"from": q.Paging.Offset,
+		"size": q.Paging.Num,
+		"query": map[string]interface{}{
+			"wildcard": map[string]interface{}{
+				q.Field: map[string]interface{}{
+					"value": q.Term,
+				},
+			},
+		},
+	}
+	hits, err := elasticSearchQuery(i.name, es, verbose, query)
+	return nil, hits, err
+}
+
+// https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-wildcard-query.html
 func (i *Index) WildCardQuery(q query.Query, verbose int) ([]index.Document, int, error) {
 	es := i.conn
 	query := map[string]interface{}{

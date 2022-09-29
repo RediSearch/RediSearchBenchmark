@@ -7,7 +7,8 @@ const (
 	QueryVerbatim     Flag = 0x1
 	QueryNoContent    Flag = 0x2
 	QueryTypePrefix   Flag = 0x3
-	QueryTypeWildcard Flag = 0x4
+	QueryTypeSuffix   Flag = 0x4
+	QueryTypeWildcard Flag = 0x5
 	// ... more to come!
 
 	DefaultOffset = 0
