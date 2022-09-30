@@ -47,7 +47,7 @@ func SuffixBenchmark(terms []string, field string, idx index.Index, prefixMinLen
 			counter++
 			term = terms[counter%len(terms)]
 		}
-		term = term[len(term)-int(prefixSize):]
+		term = "*" + term[len(term)-int(prefixSize):]
 		q := query.NewQuery(idx.GetName(), term).Limit(0, 5).SetFlags(query.QueryTypeSuffix).SetField(field)
 		_, _, err := idx.SuffixQuery(*q, debug)
 		counter++

@@ -221,9 +221,6 @@ func (i *Index) FullTextQuerySingleField(q query.Query, verbose int) (docs []ind
 	if q.Flags&query.QueryTypePrefix != 0 && term[len(term)-1] != '*' {
 		term = fmt.Sprintf("%s*", term)
 	}
-	if q.Flags&query.QueryTypeSuffix != 0 && term[0] != '*' {
-		term = fmt.Sprintf("*%s", term)
-	}
 	queryParam := term
 	if q.Field != "" {
 		queryParam = fmt.Sprintf("@%s:%s", q.Field, term)
